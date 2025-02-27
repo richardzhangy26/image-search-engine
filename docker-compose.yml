@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: image-search-backend
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    environment:
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-sk-eac6e2b665264df8b4a73bd18b79bbeb}
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: image-search-frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:5000
+    depends_on:
+      - backend
+    restart: unless-stopped
