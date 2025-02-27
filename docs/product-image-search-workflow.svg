@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 840">
+  <!-- Styles -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333"/>
+    </marker>
+    <style>
+      .title { font-family: Arial; font-size: 22px; font-weight: bold; text-anchor: middle; }
+      .subtitle { font-family: Arial; font-size: 18px; font-weight: bold; text-anchor: middle; }
+      .step-title { font-family: Arial; font-size: 16px; font-weight: bold; }
+      .step-text { font-family: Arial; font-size: 14px; }
+      .database { font-family: Arial; font-size: 14px; text-anchor: middle; }
+      .db-title { font-family: Arial; font-size: 16px; font-weight: bold; text-anchor: middle; }
+      .box { fill: #f0f8ff; stroke: #4682b4; stroke-width: 2; rx: 5; ry: 5; }
+      .box-highlight { fill: #e6f3ff; stroke: #1e90ff; stroke-width: 2; rx: 5; ry: 5; }
+      .section { fill: #f5f5f5; stroke: #a9a9a9; stroke-width: 1; rx: 5; ry: 5; opacity: 0.6; }
+      .db-box { fill: #fffaf0; stroke: #daa520; stroke-width: 2; rx: 5; ry: 5; }
+      .arrow { stroke: #333; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .dotted-line { stroke: #666; stroke-width: 1.5; stroke-dasharray: 5,5; fill: none; }
+    </style>
+  </defs>
+
+  <!-- Title -->
+  <text x="480" y="40" class="title">商品图像搜索系统工作流程</text>
+
+  <!-- Section 1: Data Preparation and Storage -->
+  <rect x="30" y="70" width="900" height="450" class="section" />
+  <text x="480" y="95" class="subtitle">1. 数据准备与存储流程</text>
+
+  <!-- Step 1.1 User Prepares Data -->
+  <rect x="60" y="120" width="200" height="90" class="box" />
+  <text x="70" y="140" class="step-title">1. 用户准备数据</text>
+  <text x="70" y="165" class="step-text">• 准备CSV文件（商品信息）</text>
+  <text x="70" y="185" class="step-text">• 准备对应的商品图片文件夹</text>
+
+  <!-- Step 1.2 Upload Data -->
+  <rect x="60" y="240" width="200" height="110" class="box" />
+  <text x="70" y="260" class="step-title">2. 上传数据</text>
+  <text x="70" y="285" class="step-text">• 切换到"添加商品"标签</text>
+  <text x="70" y="305" class="step-text">• 上传CSV文件</text>
+  <text x="70" y="325" class="step-text">• 指定图片文件夹路径</text>
+  <text x="70" y="345" class="step-text">• 点击"批量导入"按钮</text>
+
+  <!-- Step 1.3 Backend Processing -->
+  <rect x="350" y="120" width="220" height="230" class="box-highlight" />
+  <text x="360" y="140" class="step-title">3. 后台处理</text>
+  <text x="360" y="165" class="step-text">• 系统读取CSV文件内容</text>
+  <text x="360" y="185" class="step-text">• 处理每一行商品数据</text>
+  <text x="360" y="205" class="step-text">• 为每个商品图片生成特征向量</text>
+  <text x="360" y="225" class="step-text">  （使用DashScope API）</text>
+  <text x="360" y="245" class="step-text">• 将特征向量存入FAISS向量数据库</text>
+  <text x="360" y="265" class="step-text">• 将商品信息存入SQLite关系数据库</text>
+  <text x="360" y="285" class="step-text">• 建立向量ID与商品ID的映射关系</text>
+
+  <!-- Step 1.4 Data Storage Structure -->
+  <rect x="630" y="120" width="270" height="230" class="box" />
+  <text x="640" y="140" class="step-title">4. 数据存储结构</text>
+
+  <!-- FAISS Database -->
+  <rect x="650" y="160" width="230" height="60" class="db-box" />
+  <text x="765" y="185" class="db-title">向量数据库(FAISS)</text>
+  <text x="765" y="205" class="database">存储图片的特征向量</text>
+
+  <!-- SQLite Database -->
+  <rect x="650" y="230" width="230" height="100" class="db-box" />
+  <text x="765" y="250" class="db-title">关系数据库(SQLite)</text>
+  <text x="765" y="275" class="database">products表：商品基本信息</text>
+  <text x="765" y="295" class="database">product_images表：图片路径和向量ID</text>
+
+  <!-- Flow Arrows for Section 1 -->
+  <path d="M160 210 L160 240" class="arrow" />
+  <path d="M260 180 L350 180" class="arrow" />
+  <path d="M570 180 L650 180" class="arrow" />
+  <path d="M570 240 L650 270" class="arrow" />
+
+  <!-- Section 2: Image Search Process -->
+  <rect x="30" y="530" width="900" height="280" class="section" />
+  <text x="480" y="555" class="subtitle">2. 图像搜索流程</text>
+
+  <!-- Step 2.1 User Uploads Query Image -->
+  <rect x="60" y="580" width="200" height="80" class="box" />
+  <text x="70" y="600" class="step-title">1. 用户上传查询图片</text>
+  <text x="70" y="625" class="step-text">• 在"搜索商品"页面上传图片</text>
+  <text x="70" y="645" class="step-text">• 点击"搜索"按钮</text>
+
+  <!-- Step 2.2 Feature Extraction -->
+  <rect x="350" y="580" width="220" height="100" class="box-highlight" />
+  <text x="360" y="600" class="step-title">2. 特征提取</text>
+  <text x="360" y="625" class="step-text">• 系统接收查询图片</text>
+  <text x="360" y="645" class="step-text">• 使用DashScope API提取特征向量</text>
+  <text x="360" y="665" class="step-text">• 对特征向量进行归一化处理</text>
+
+  <!-- Step 2.3 Similarity Search -->
+  <rect x="350" y="700" width="220" height="100" class="box-highlight" />
+  <text x="360" y="720" class="step-title">3. 相似度搜索</text>
+  <text x="360" y="745" class="step-text">• 在FAISS数据库中搜索相似向量</text>
+  <text x="360" y="765" class="step-text">• 根据向量ID找到对应的商品ID</text>
+  <text x="360" y="785" class="step-text">• 从关系数据库中获取商品信息</text>
+
+  <!-- Step 2.4 Display Results -->
+  <rect x="660" y="640" width="200" height="100" class="box" />
+  <text x="670" y="660" class="step-title">4. 展示结果</text>
+  <text x="670" y="685" class="step-text">• 按相似度排序显示商品</text>
+  <text x="670" y="705" class="step-text">• 展示商品图片、名称、价格、</text>
+  <text x="670" y="725" class="step-text">  描述和相似度</text>
+
+  <!-- Flow Arrows for Section 2 -->
+  <path d="M260 620 L350 620" class="arrow" />
+  <path d="M460 680 L460 700" class="arrow" />
+  <path d="M570 620 L660 660" class="arrow" stroke-width="2.5" />
+  <path d="M570 740 L660 700" class="arrow" stroke-width="2.5" />
+
+  <!-- Database connections -->
+  <path d="M460 350 L460 580" class="dotted-line" />
+  <path d="M765 330 L765 640" class="dotted-line" />
+  <circle cx="460" cy="450" r="5" fill="#1e90ff" />
+  <circle cx="765" cy="450" r="5" fill="#daa520" />
+</svg>

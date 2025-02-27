@@ -9,10 +9,6 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    strictPort: true,
-    fs: {
-      strict: true,
-      allow: ['..'], // Allow serving files from one level up to handle image paths
-    },
+    strictPort: true, // 如果端口被占用，则会抛出错误而不是尝试下一个可用端口
   },
 });
