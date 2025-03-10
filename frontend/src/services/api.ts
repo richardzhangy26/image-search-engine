@@ -19,6 +19,12 @@ export interface SearchResult {
   original_path?: string; // 添加原始路径用于调试
 }
 
+export interface ProductDetails extends ProductInfo {
+  image_path: string;
+  features?: string[];
+  specs?: Record<string, string>;
+}
+
 // Helper function to get full image URL
 export const getImageUrl = (imagePath: string): string => {
   // If the path already starts with http or https, return it as is
@@ -55,6 +61,21 @@ export const getImageUrl = (imagePath: string): string => {
   return fullUrl;
 };
 
+export const getProductById = async (
+  productId: string
+): Promise<ProductDetails> => {
+  const response = await fetch(`${API_BASE_URL}/products/${productId}`, {
+    method: 'GET',
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || '获取商品详情失败');
+  }
+
+  return response.json();
+};
+
 export const uploadProduct = async (
   productInfo: ProductInfo,
   images: File[]
@@ -87,17 +108,33 @@ export const searchProducts = async (
   formData.append('image', image);
   formData.append('top_k', topK.toString());
 
-  const response = await fetch(`${API_BASE_URL}/search`, {
-    method: 'POST',
-    body: formData,
-  });
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/search`, {
+      method: 'POST',
+      body: formData,
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || '搜索失败');
+    if (!response.ok) {
+      // Clone the response before reading it
+      const errorClone = response.clone();
+      
+      try {
+        // Try to parse as JSON first
+        const error = await response.json();
+        throw new Error(error.error || '搜索失败');
+      } catch (jsonError) {
+        // If JSON parsing fails, get the text from the cloned response
+        const text = await errorClone.text();
+        console.error('Non-JSON error response:', text.substring(0, 100) + '...');
+        throw new Error('服务器返回了非JSON格式的响应，请检查服务器日志');
+      }
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Search request failed:', error);
+    throw error instanceof Error ? error : new Error('搜索请求失败');
   }
-
-  return response.json();
 };
 
 export const uploadProductCSV = async (

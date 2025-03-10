@@ -13,6 +13,7 @@ import io
 import time
 import random
 from dotenv import load_dotenv
+import os
 load_dotenv()
 # 设置DashScope API密钥
 dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")

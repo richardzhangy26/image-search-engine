@@ -1,5 +1,5 @@
 from turtle import pd
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
@@ -333,72 +333,29 @@ def add_products_from_csv():
         return jsonify({'error': str(e)}), 500
 
 # 直接提供商品图片访问
-@app.route('/api/商品信息/商品图/<path:filename>')
-def serve_product_image(filename):
+@app.route('/商品信息/<path:subpath>')
+def serve_product_image_cn(subpath):
     try:
-        # URL解码
-        import urllib.parse
-        filename = urllib.parse.unquote(filename)
-        
-        print(f"直接请求商品图片: {filename}")
-        
-        # 构建完整路径 - 尝试多种可能的路径
+        # 构建完整路径
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        full_path = os.path.join(parent_dir, '商品信息', subpath)
         
-        # 尝试方式1: 直接拼接路径
-        full_path1 = os.path.join(parent_dir, '商品信息', '商品图', filename)
-        print(f"尝试路径1: {full_path1}")
+        print(f"尝试访问中文路径图片: {full_path}")
         
-        # 尝试方式2: 使用相对路径
-        full_path2 = os.path.join(parent_dir, '..', '商品信息', '商品图', filename)
-        print(f"尝试路径2: {full_path2}")
-        
-        # 尝试方式3: 使用绝对路径
-        full_path3 = os.path.abspath(os.path.join(parent_dir, '商品信息', '商品图', filename))
-        print(f"尝试路径3: {full_path3}")
-        
-        # 检查文件是否存在
-        if os.path.exists(full_path1):
-            print(f"找到图片: {full_path1}")
-            directory = os.path.dirname(full_path1)
-            base_filename = os.path.basename(full_path1)
-            return send_from_directory(directory, base_filename)
-        
-        if os.path.exists(full_path2):
-            print(f"找到图片: {full_path2}")
-            directory = os.path.dirname(full_path2)
-            base_filename = os.path.basename(full_path2)
-            return send_from_directory(directory, base_filename)
-            
-        if os.path.exists(full_path3):
-            print(f"找到图片: {full_path3}")
-            directory = os.path.dirname(full_path3)
-            base_filename = os.path.basename(full_path3)
-            return send_from_directory(directory, base_filename)
-        
-        # 如果找不到，尝试在整个项目中查找文件名
-        import glob
-        base_name = os.path.basename(filename)
-        search_pattern = os.path.join(parent_dir, "**", base_name)
-        print(f"尝试全局搜索: {search_pattern}")
-        
-        found_files = glob.glob(search_pattern, recursive=True)
-        if found_files:
-            print(f"全局搜索找到文件: {found_files[0]}")
-            directory = os.path.dirname(found_files[0])
-            base_filename = os.path.basename(found_files[0])
-            return send_from_directory(directory, base_filename)
+        if os.path.exists(full_path):
+            # 使用send_file而不是send_from_directory，更好地处理特殊字符
+            return send_file(full_path)
         
         # 如果找不到，返回404
-        print(f"找不到商品图片，尝试过的路径: \n1. {full_path1}\n2. {full_path2}\n3. {full_path3}")
-        return "Product image not found", 404
+        print(f"找不到中文路径图片: {full_path}")
+        return "Image not found", 404
         
     except Exception as e:
-        print(f"提供商品图片时出错: {e}")
+        print(f"提供中文路径图片时出错: {e}")
         return str(e), 500
 
 # 提供静态图片访问
-@app.route('/api/images/<path:filename>')
+@app.route('/images/<path:filename>')
 def serve_image(filename):
     try:
         # URL解码
@@ -431,6 +388,30 @@ def serve_image(filename):
         
     except Exception as e:
         print(f"提供图片时出错: {e}")
+        return str(e), 500
+
+# 添加一个通用的静态文件服务路由
+@app.route('/<path:filepath>')
+def serve_any_static_file(filepath):
+    try:
+        # URL解码
+        import urllib.parse
+        filepath = urllib.parse.unquote(filepath)
+        
+        print(f"尝试访问通用路径: {filepath}")
+        
+        # 构建完整路径
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        full_path = os.path.join(parent_dir, filepath)
+        
+        if os.path.exists(full_path) and os.path.isfile(full_path):
+            return send_file(full_path)
+        
+        # 如果找不到或不是文件，返回404
+        return "File not found", 404
+        
+    except Exception as e:
+        print(f"提供通用文件时出错: {e}")
         return str(e), 500
 
 if __name__ == '__main__':
