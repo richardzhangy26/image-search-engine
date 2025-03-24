@@ -1,4 +1,5 @@
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import faiss
 import numpy as np
 from pathlib import Path
@@ -20,6 +21,15 @@ dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")
 if not dashscope.api_key:
     raise ValueError("请设置DASHSCOPE_API_KEY环境变量")
 
+# 数据库配置
+DB_CONFIG = {
+    'host': os.getenv('DB_HOST', 'localhost'),
+    'port': os.getenv('DB_PORT', '5432'),
+    'dbname': os.getenv('DB_NAME', 'product_search'),
+    'user': os.getenv('DB_USER', 'postgres'),
+    'password': os.getenv('DB_PASSWORD', 'postgres')
+}
+
 @dataclass
 class ProductInfo:
     """商品信息数据类"""
@@ -30,14 +40,13 @@ class ProductInfo:
     description: str
 
 class VectorProductIndex:
-    def __init__(self, db_path: str, vector_dim: int = 1024):  # DashScope embedding维度为1024
+    def __init__(self, db_path: str = None, vector_dim: int = 1024):  # DashScope embedding维度为1024
         """
         初始化向量索引系统
         Args:
-            db_path: SQLite数据库路径
+            db_path: 数据库路径 (不再使用，保留参数以兼容现有代码)
             vector_dim: 特征向量维度
         """
-        self.db_path = db_path
         self.vector_dim = vector_dim
         
         # 初始化FAISS索引
@@ -46,30 +55,41 @@ class VectorProductIndex:
         # 创建数据库表
         self._init_database()
         
+    def _get_db_connection(self):
+        """获取PostgreSQL数据库连接"""
+        return psycopg2.connect(**DB_CONFIG)
+        
     def _init_database(self):
-        """初始化SQLite数据库表"""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS products (
-                    product_id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    attributes TEXT NOT NULL,  -- JSON格式存储属性
-                    price REAL NOT NULL,
-                    description TEXT
-                )
-            """)
-            
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS product_images (
-                    image_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    product_id TEXT NOT NULL,
-                    image_path TEXT NOT NULL,
-                    vector_id INTEGER NOT NULL,  -- 对应FAISS中的向量ID
-                    FOREIGN KEY (product_id) REFERENCES products (product_id),
-                    UNIQUE (image_path)
-                )
-            """)
-            conn.commit()
+        """初始化PostgreSQL数据库表"""
+        try:
+            with self._get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    # 创建products表
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS products (
+                            product_id TEXT PRIMARY KEY,
+                            name TEXT NOT NULL,
+                            attributes JSONB NOT NULL,  -- 使用JSONB格式存储属性
+                            price REAL NOT NULL,
+                            description TEXT
+                        )
+                    """)
+                    
+                    # 创建product_images表
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS product_images (
+                            image_id SERIAL PRIMARY KEY,
+                            product_id TEXT NOT NULL,
+                            image_path TEXT NOT NULL,
+                            vector_id INTEGER NOT NULL,  -- 对应FAISS中的向量ID
+                            FOREIGN KEY (product_id) REFERENCES products (product_id),
+                            UNIQUE (image_path)
+                        )
+                    """)
+                    conn.commit()
+        except psycopg2.Error as e:
+            print(f"数据库初始化错误: {e}")
+            raise
     
     def _image_to_base64(self, image_path: str) -> str:
         """将图片转换为base64格式"""
@@ -149,41 +169,50 @@ class VectorProductIndex:
             product: 商品信息
             image_paths: 商品图片路径列表
         """
-        with sqlite3.connect(self.db_path) as conn:
-            # 存储商品信息
-            conn.execute(
-                "INSERT OR REPLACE INTO products VALUES (?, ?, ?, ?, ?)",
-                (
-                    product.product_id,
-                    product.name,
-                    json.dumps(product.attributes),
-                    product.price,
-                    product.description
-                )
-            )
-            
-            # 提取并存储图片特征
-            features = []
-            for image_path in image_paths:
-                feature = self.extract_feature(image_path)
-                features.append(feature)
-            
-            # 批量添加到FAISS索引
-            features_array = np.array(features).astype('float32')
-            vector_ids = np.arange(
-                self.index.ntotal,
-                self.index.ntotal + len(features)
-            )
-            self.index.add(features_array)
-            
-            # 存储图片信息和向量ID的映射
-            for image_path, vector_id in zip(image_paths, vector_ids):
-                conn.execute(
-                    "INSERT OR REPLACE INTO product_images (product_id, image_path, vector_id) VALUES (?, ?, ?)",
-                    (product.product_id, image_path, int(vector_id))
-                )
-            
-            conn.commit()
+        try:
+            with self._get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    # 存储商品信息
+                    cur.execute(
+                        "INSERT INTO products VALUES (%s, %s, %s, %s, %s) ON CONFLICT (product_id) DO UPDATE SET name = %s, attributes = %s, price = %s, description = %s",
+                        (
+                            product.product_id,
+                            product.name,
+                            json.dumps(product.attributes),
+                            product.price,
+                            product.description,
+                            product.name,
+                            json.dumps(product.attributes),
+                            product.price,
+                            product.description
+                        )
+                    )
+                    
+                    # 提取并存储图片特征
+                    features = []
+                    for image_path in image_paths:
+                        feature = self.extract_feature(image_path)
+                        features.append(feature)
+                    
+                    # 批量添加到FAISS索引
+                    features_array = np.array(features).astype('float32')
+                    vector_ids = np.arange(
+                        self.index.ntotal,
+                        self.index.ntotal + len(features)
+                    )
+                    self.index.add(features_array)
+                    
+                    # 存储图片信息和向量ID的映射
+                    for image_path, vector_id in zip(image_paths, vector_ids):
+                        cur.execute(
+                            "INSERT INTO product_images (product_id, image_path, vector_id) VALUES (%s, %s, %s) ON CONFLICT (image_path) DO UPDATE SET product_id = %s, vector_id = %s",
+                            (product.product_id, image_path, int(vector_id), product.product_id, int(vector_id))
+                        )
+                    
+                    conn.commit()
+        except psycopg2.Error as e:
+            print(f"添加商品时发生错误: {e}")
+            raise
     
     def search(self, query_image_path: str, top_k: int = 5) -> List[Tuple[ProductInfo, float, str]]:
         """
@@ -206,31 +235,36 @@ class VectorProductIndex:
         print(f"搜索结果 - distances: {distances}, indices: {indices}")
         
         results = []
-        with sqlite3.connect(self.db_path) as conn:
-            for i, (distance, vector_id) in enumerate(zip(distances[0], indices[0])):
-                if vector_id == -1:  # 没有找到匹配的向量
-                    continue
-                    
-                # 查询匹配图片的商品信息
-                cursor = conn.execute("""
-                    SELECT p.*, pi.image_path
-                    FROM products p
-                    JOIN product_images pi ON p.product_id = pi.product_id
-                    WHERE pi.vector_id = ?
-                """, (int(vector_id),))
-                
-                row = cursor.fetchone()
-                if row:
-                    product = ProductInfo(
-                        product_id=row[0],
-                        name=row[1],
-                        attributes=json.loads(row[2]),
-                        price=row[3],
-                        description=row[4]
-                    )
-                    # 计算相似度得分（将L2距离转换为相似度）
-                    similarity = float(1 / (1 + distance))  # 确保转换为原生 float
-                    results.append((product, similarity, row[5]))
+        try:
+            with self._get_db_connection() as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                    for i, (distance, vector_id) in enumerate(zip(distances[0], indices[0])):
+                        if vector_id == -1:  # 没有找到匹配的向量
+                            continue
+                            
+                        # 查询匹配图片的商品信息
+                        cur.execute("""
+                            SELECT p.product_id, p.name, p.attributes, p.price, p.description, pi.image_path
+                            FROM products p
+                            JOIN product_images pi ON p.product_id = pi.product_id
+                            WHERE pi.vector_id = %s
+                        """, (int(vector_id),))
+                        
+                        row = cur.fetchone()
+                        if row:
+                            product = ProductInfo(
+                                product_id=row['product_id'],
+                                name=row['name'],
+                                attributes=json.loads(row['attributes']),
+                                price=row['price'],
+                                description=row['description']
+                            )
+                            # 计算相似度得分（将L2距离转换为相似度）
+                            similarity = float(1 / (1 + distance))  # 确保转换为原生 float
+                            results.append((product, similarity, row['image_path']))
+        except psycopg2.Error as e:
+            print(f"搜索商品时发生错误: {e}")
+            raise
         
         return results
     

@@ -7,6 +7,10 @@ import csv
 import io
 from pathlib import Path
 from product_search import VectorProductIndex, ProductInfo
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)  # 启用CORS支持跨域请求
@@ -18,9 +22,8 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 限制上传文件大小为16MB
 
 # 初始化商品索引系统
-DB_PATH = "data/product_search/db/products.db"
 INDEX_PATH = "data/product_search/index/product_vectors.index"
-product_index = VectorProductIndex(DB_PATH)
+product_index = VectorProductIndex()
 
 # 如果索引文件存在，加载它
 if os.path.exists(INDEX_PATH):
@@ -32,7 +35,6 @@ def allowed_file(filename):
 def ensure_directories():
     """确保必要的目录存在"""
     Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)
-    Path(os.path.dirname(DB_PATH)).mkdir(parents=True, exist_ok=True)
     Path(os.path.dirname(INDEX_PATH)).mkdir(parents=True, exist_ok=True)
 
 @app.before_first_request
