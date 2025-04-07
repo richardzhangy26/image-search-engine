@@ -25,6 +25,25 @@ export interface ProductDetails extends ProductInfo {
   specs?: Record<string, string>;
 }
 
+export interface Customer {
+  id: number;
+  name: string;
+  wechat: string;
+  phone: string;
+  default_address: string;
+  address_history: string[];
+}
+
+export interface AddressInfo {
+  name: string;
+  wechat: string;
+  phone: string;
+  address: string;
+  province?: string;
+  city?: string;
+  district?: string;
+}
+
 // Helper function to get full image URL
 export const getImageUrl = (imagePath: string): string => {
   // If the path already starts with http or https, return it as is
@@ -100,6 +119,27 @@ export const uploadProduct = async (
   return response.json();
 };
 
+export const getCustomers = async (): Promise<Customer[]> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/customers`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || '获取客户列表失败');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Failed to fetch customers:', error);
+    throw error instanceof Error ? error : new Error('获取客户列表失败');
+  }
+};
+
 export const searchProducts = async (
   image: File,
   topK: number = 5
@@ -153,6 +193,40 @@ export const uploadProductCSV = async (
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'CSV批量上传失败');
+  }
+
+  return response.json();
+};
+
+// Parse and save customer address information
+export const parseAndSaveAddress = async (text: string): Promise<AddressInfo> => {
+  const response = await fetch(`${API_BASE_URL}/api/customers/parse-address`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ text }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to parse address');
+  }
+
+  return response.json();
+};
+
+// Add new customer
+export const addCustomer = async (customerInfo: AddressInfo): Promise<{ message: string; customer_id: number }> => {
+  const response = await fetch(`${API_BASE_URL}/api/customers`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(customerInfo),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to add customer');
   }
 
   return response.json();
