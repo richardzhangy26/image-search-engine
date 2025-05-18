@@ -5,6 +5,8 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    pkg-config \
+    default-libmysqlclient-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements file
@@ -21,6 +23,7 @@ RUN mkdir -p data/product_search/images data/product_search/db data/product_sear
 
 # Expose the port the app runs on
 EXPOSE 5000
+
 
 # Command to run the application
 CMD ["python", "app.py"]

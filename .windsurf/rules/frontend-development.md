@@ -1,0 +1,42 @@
+---
+trigger: model_decision
+description: 
+globs: 
+---
+# Frontend Development Guide
+
+## Project Structure
+- Source code: [frontend/src/](mdc:frontend/src)
+- Configuration files:
+  - [frontend/vite.config.ts](mdc:frontend/vite.config.ts)
+  - [frontend/tsconfig.json](mdc:frontend/tsconfig.json)
+  - [frontend/tailwind.config.js](mdc:frontend/tailwind.config.js)
+
+## Development Workflow
+1. Install dependencies:
+   ```bash
+   cd frontend
+   yarn install
+   ```
+
+2. Start development server:
+   ```bash
+   yarn dev
+   ```
+
+3. Build for production:
+   ```bash
+   yarn build
+   ```
+
+## Key Components
+- Main application entry: [frontend/src/main.ts](mdc:frontend/src/main.ts)
+- HTML template: [frontend/index.html](mdc:frontend/index.html)
+
+## Docker Deployment
+- Docker configuration: [frontend/Dockerfile](mdc:frontend/Dockerfile)
+- Nginx configuration: [frontend/nginx.conf](mdc:frontend/nginx.conf)
+
+## Code Style
+- ESLint configuration: [frontend/eslint.config.js](mdc:frontend/eslint.config.js)
+- TypeScript configuration: [frontend/tsconfig.app.json](mdc:frontend/tsconfig.app.json)

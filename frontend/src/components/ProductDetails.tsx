@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ShoppingCart } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { getProductById, ProductDetails as ProductDetailsType, getImageUrl } from '../services/api';
 
 function ProductDetails() {
@@ -61,96 +61,147 @@ function ProductDetails() {
     );
   }
 
-  // Convert attributes to features and specs for display
-  const features = product.features || 
-    Object.entries(product.attributes || {})
-      .filter(([key]) => key.toLowerCase().includes('feature') || key.toLowerCase().includes('特点'))
-      .map(([_, value]) => value);
-
-  const specs = product.specs || 
-    Object.entries(product.attributes || {})
-      .filter(([key]) => !key.toLowerCase().includes('feature') && !key.toLowerCase().includes('特点'))
-      .reduce((acc, [key, value]) => {
-        acc[key] = value;
-        return acc;
-      }, {} as Record<string, string>);
-
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-        <button
-          onClick={() => navigate('/')}
-          className="mb-8 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          返回搜索
-        </button>
-
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-8">
-            <div className="space-y-4">
-              <img
-                src={getImageUrl(product.image_path)}
-                alt={product.name}
-                className="w-full h-96 object-cover rounded-lg"
-                onError={(e) => {
-                  const imgElement = e.target as HTMLImageElement;
-                  imgElement.src = '/placeholder-image.png';
-                  imgElement.alt = 'Image not available';
-                }}
-              />
-              <div className="grid grid-cols-4 gap-2">
-                {/* Additional product images would go here */}
-                <div className="aspect-square bg-gray-100 rounded-md"></div>
-                <div className="aspect-square bg-gray-100 rounded-md"></div>
-                <div className="aspect-square bg-gray-100 rounded-md"></div>
-                <div className="aspect-square bg-gray-100 rounded-md"></div>
-              </div>
+      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div className="bg-white shadow-sm rounded-lg overflow-hidden">
+          <div className="p-6">
+            <div className="flex justify-between items-start">
+              <h1 className="text-3xl font-bold text-gray-900 mb-4">{product.name}</h1>
+              <button
+                onClick={() => navigate('/')}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                返回搜索
+              </button>
             </div>
 
-            <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">{product.name}</h1>
-                <p className="text-lg text-gray-500">
-                  {product.attributes?.category || product.attributes?.类别 || '未分类'}
-                </p>
+                <img
+                  src={product.good_img || getImageUrl(product.image_path)}
+                  alt={product.name}
+                  className="w-full rounded-lg shadow-lg"
+                />
+                {product.size_img && (
+                  <div className="mt-4">
+                    <h3 className="text-lg font-semibold mb-2">尺码表</h3>
+                    <img
+                      src={product.size_img}
+                      alt="尺码表"
+                      className="w-full rounded-lg shadow"
+                    />
+                  </div>
+                )}
               </div>
 
-              <div className="text-4xl font-bold text-gray-900">
-                ¥{product.price.toFixed(2)}
-              </div>
-
-              <p className="text-gray-600">{product.description}</p>
-
-              {features.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-semibold mb-2">产品特点</h3>
-                  <ul className="list-disc list-inside space-y-1 text-gray-600">
-                    {features.map((feature, index) => (
-                      <li key={index}>{feature}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {Object.keys(specs).length > 0 && (
-                <div>
-                  <h3 className="text-lg font-semibold mb-2">规格参数</h3>
-                  <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
-                    {Object.entries(specs).map(([key, value]) => (
-                      <div key={key} className="border-b border-gray-200 pb-2">
-                        <dt className="text-sm font-medium text-gray-500">{key}</dt>
-                        <dd className="text-sm text-gray-900">{value}</dd>
+              <div>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-baseline">
+                    <div className="text-2xl font-bold text-red-600">
+                      ¥{product.sale_price.toFixed(2)}
+                    </div>
+                    {product.sale_price < product.price && (
+                      <div className="text-lg text-gray-500 line-through">
+                        ¥{product.price.toFixed(2)}
                       </div>
-                    ))}
-                  </dl>
-                </div>
-              )}
+                    )}
+                  </div>
 
-              <button className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold flex items-center justify-center hover:bg-blue-700 transition-colors">
-                <ShoppingCart className="w-5 h-5 mr-2" />
-                加入购物车
-              </button>
+                  {product.product_code && (
+                    <div>
+                      <span className="text-gray-600">货号：</span>
+                      <span className="font-medium">{product.product_code}</span>
+                    </div>
+                  )}
+
+                  <div className="prose max-w-none">
+                    <p className="text-gray-600">{product.description}</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {product.style && (
+                      <div>
+                        <span className="text-gray-600">风格：</span>
+                        <span className="font-medium">{product.style}</span>
+                      </div>
+                    )}
+                    {product.color && (
+                      <div>
+                        <span className="text-gray-600">颜色：</span>
+                        <span className="font-medium">{product.color}</span>
+                      </div>
+                    )}
+                    {product.size && (
+                      <div>
+                        <span className="text-gray-600">尺码：</span>
+                        <span className="font-medium">{product.size}</span>
+                      </div>
+                    )}
+                    {product.main_material && (
+                      <div>
+                        <span className="text-gray-600">主面料：</span>
+                        <span className="font-medium">{product.main_material}</span>
+                      </div>
+                    )}
+                    {product.pattern && (
+                      <div>
+                        <span className="text-gray-600">图案：</span>
+                        <span className="font-medium">{product.pattern}</span>
+                      </div>
+                    )}
+                    {product.clothing_length && (
+                      <div>
+                        <span className="text-gray-600">衣长：</span>
+                        <span className="font-medium">{product.clothing_length}</span>
+                      </div>
+                    )}
+                    {product.skirt_length && (
+                      <div>
+                        <span className="text-gray-600">裙长：</span>
+                        <span className="font-medium">{product.skirt_length}</span>
+                      </div>
+                    )}
+                    {product.pants_length && (
+                      <div>
+                        <span className="text-gray-600">裤长：</span>
+                        <span className="font-medium">{product.pants_length}</span>
+                      </div>
+                    )}
+                    {product.sleeve_length && (
+                      <div>
+                        <span className="text-gray-600">袖长：</span>
+                        <span className="font-medium">{product.sleeve_length}</span>
+                      </div>
+                    )}
+                    {product.fashion_elements && (
+                      <div>
+                        <span className="text-gray-600">流行元素：</span>
+                        <span className="font-medium">{product.fashion_elements}</span>
+                      </div>
+                    )}
+                    {product.craft && (
+                      <div>
+                        <span className="text-gray-600">工艺：</span>
+                        <span className="font-medium">{product.craft}</span>
+                      </div>
+                    )}
+                    {product.launch_season && (
+                      <div>
+                        <span className="text-gray-600">上市年份/季节：</span>
+                        <span className="font-medium">{product.launch_season}</span>
+                      </div>
+                    )}
+                    {product.factory_name && (
+                      <div>
+                        <span className="text-gray-600">工厂名称：</span>
+                        <span className="font-medium">{product.factory_name}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

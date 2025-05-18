@@ -6,12 +6,12 @@ class Customer(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    wechat = db.Column(db.String(100), unique=True, nullable=False)  # 改为微信号
-    phone = db.Column(db.String(20))
+    wechat = db.Column(db.String(100))  # 改为微信号
+    phone = db.Column(db.String(20), nullable=False)
     default_address = db.Column(db.Text)  # 默认收货地址
     address_history = db.Column(db.JSON)  # 历史收货地址
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
     # Relationship to Orders
     orders = db.relationship('Order', backref='customer', lazy=True)

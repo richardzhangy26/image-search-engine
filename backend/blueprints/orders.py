@@ -1,164 +1,288 @@
 from flask import Blueprint, request, jsonify, current_app
-from ..models import db, Order, OrderItem, Product, Customer
+from models import db, Order, Product, Customer
 import uuid # For generating unique order numbers
+from datetime import datetime
+import json
+from flask_cors import cross_origin
+from werkzeug.utils import secure_filename
+import pandas as pd
+import os
 
 orders_bp = Blueprint('orders', __name__, url_prefix='/api/orders')
 
+def generate_order_number():
+    """生成订单编号：ORD + 年月日 + 4位随机数"""
+    date_str = datetime.now().strftime('%Y%m%d')
+    random_str = str(uuid.uuid4().int)[:4]
+    return f'ORD{date_str}{random_str}'
+
 @orders_bp.route('', methods=['POST'])
+@cross_origin()
 def create_order():
     """
-    Creates a new order.
-    Expects JSON body like:
+    创建新订单
+    期望的 JSON 格式:
     {
         "customer_id": 1,
-        "items": [
-            {"product_id": 101, "quantity": 2},
-            {"product_id": 102, "quantity": 1}
-        ]
+        "shipping_address": "收货地址",
+        "products": [
+            {
+                "product_id": 101,
+                "quantity": 2,
+                "price": 99.99,
+                "size": "L",
+                "color": "红色"
+            }
+        ],
+        "total_amount": 199.98,
+        "customer_notes": "备注信息",
+        "internal_notes": "内部备注"
     }
     """
-    data = request.get_json()
-    if not data or not data.get('customer_id') or not data.get('items'):
-        return jsonify({'error': 'Missing required fields: customer_id and items'}), 400
-
-    customer_id = data['customer_id']
-    items_data = data['items']
-
-    # Validate customer exists
-    customer = Customer.query.get(customer_id)
-    if not customer:
-        return jsonify({'error': f'Customer with ID {customer_id} not found'}), 404
-
-    if not isinstance(items_data, list) or not items_data:
-        return jsonify({'error': 'Items must be a non-empty list'}), 400
-
-    total_amount = 0
-    order_items_to_create = []
-
     try:
-        # Start a transaction
-        with db.session.begin_nested(): # Use nested transaction for atomicity within the request
-            product_ids = [item.get('product_id') for item in items_data if item.get('product_id')]
-            if not product_ids:
-                 raise ValueError("No valid product IDs provided in items")
-            # Fetch all needed products in one query for efficiency
-            products = Product.query.filter(Product.id.in_(product_ids)).all()
-            products_dict = {p.id: p for p in products}
-
-            for item_data in items_data:
-                product_id = item_data.get('product_id')
-                quantity = item_data.get('quantity')
-
-                if not product_id or not quantity or not isinstance(quantity, int) or quantity <= 0:
-                    raise ValueError("Invalid product_id or quantity in items list")
-
-                product = products_dict.get(product_id)
-                if not product:
-                    raise LookupError(f"Product with ID {product_id} not found")
-
-                # TODO: Implement stock check if necessary
-                # if product.stock < quantity:
-                #     raise ValueError(f"Insufficient stock for product {product.name} (ID: {product_id})")
-
-                price_per_unit = product.price # Use current product price
-                total_amount += price_per_unit * quantity
-
-                order_item = OrderItem(
-                    product_id=product_id,
-                    quantity=quantity,
-                    price_per_unit=price_per_unit
-                    # order_id will be set later when associated with the Order
-                )
-                order_items_to_create.append(order_item)
-
-                # TODO: Decrement stock if necessary
-                # product.stock -= quantity
-
-            # Create the Order
-            new_order = Order(
-                order_number=str(uuid.uuid4().hex), # Generate a unique hex order number
-                customer_id=customer_id,
-                total_amount=round(total_amount, 2),
-                status='Pending' # Initial status
-            )
-
-            # Associate OrderItems with the Order
-            new_order.items.extend(order_items_to_create)
-
-            db.session.add(new_order)
-
-        # Commit the transaction if all nested operations succeed
+        data = request.get_json()
+        
+        # 验证必要字段
+        required_fields = ['customer_id', 'shipping_address', 'products']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'error': f'缺少必要字段: {field}'}), 400
+        
+        # 验证客户是否存在
+        customer = Customer.query.get(data['customer_id'])
+        if not customer:
+            return jsonify({'error': '客户不存在'}), 404
+            
+        # 验证产品列表
+        products = data['products']
+        if not isinstance(products, list) or not products:
+            return jsonify({'error': '产品列表不能为空'}), 400
+            
+        # 验证每个产品
+        for product in products:
+            if not all(k in product for k in ['product_id', 'quantity', 'price']):
+                return jsonify({'error': '产品信息不完整'}), 400
+            
+            # 检查产品是否存在
+            db_product = Product.query.get(product['product_id'])
+            if not db_product:
+                return jsonify({'error': f'产品不存在: {product["product_id"]}'}), 404
+                
+            # 补充产品信息
+            product['product_name'] = db_product.name
+            product['product_code'] = db_product.product_code
+            
+        # 创建订单
+        order = Order(
+            order_number=generate_order_number(),
+            customer_id=data['customer_id'],
+            shipping_address=data['shipping_address'],
+            total_amount=data['total_amount'],
+            status='unpaid',
+            payment_status='unpaid',
+            products=json.dumps(products, ensure_ascii=False),
+            customer_notes=data.get('customer_notes', ''),
+            internal_notes=data.get('internal_notes', '')
+        )
+        
+        db.session.add(order)
         db.session.commit()
-        return jsonify(new_order.to_dict()), 201
-
-    except (ValueError, LookupError) as e:
-        db.session.rollback() # Rollback on validation or lookup errors
-        return jsonify({'error': str(e)}), 400
+        
+        return jsonify({
+            'message': '订单创建成功',
+            'order_id': order.id,
+            'order_number': order.order_number
+        }), 201
+        
     except Exception as e:
-        db.session.rollback() # Rollback on any other errors
-        current_app.logger.error(f"Error creating order: {e}")
-        return jsonify({'error': 'Internal server error creating order'}), 500
-
-
-@orders_bp.route('/<int:order_id>', methods=['GET'])
-def get_order(order_id):
-    # Use joinedload to efficiently load related items and customer if needed frequently
-    # from sqlalchemy.orm import joinedload
-    # order = Order.query.options(joinedload(Order.items), joinedload(Order.customer)).get_or_404(order_id)
-    order = Order.query.get_or_404(order_id)
-    return jsonify(order.to_dict()), 200
+        current_app.logger.error(f"创建订单时出错: {str(e)}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 @orders_bp.route('', methods=['GET'])
+@cross_origin()
 def list_orders():
-    # Add filtering/pagination as needed
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 10, type=int)
-    customer_id = request.args.get('customer_id', type=int)
-    status = request.args.get('status')
+    """获取订单列表
+    
+    Query Parameters:
+        page (int): 页码，默认1
+        per_page (int): 每页数量，默认10
+        customer_id (int): 客户ID，可选
+        status (str): 订单状态，可选
+        sort (str): 排序字段，可选，默认按创建时间倒序
+        order (str): 排序方向，可选，asc或desc，默认desc
+    """
+    try:
+        # 获取查询参数
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        customer_id = request.args.get('customer_id', type=int)
+        status = request.args.get('status')
+        sort_field = request.args.get('sort', 'created_at')
+        sort_order = request.args.get('order', 'desc')
 
-    query = Order.query
+        # 构建查询
+        query = Order.query.join(Customer, Order.customer_id == Customer.id)
 
-    if customer_id:
-        query = query.filter(Order.customer_id == customer_id)
-    if status:
-        query = query.filter(Order.status == status)
+        # 应用过滤条件
+        if customer_id:
+            query = query.filter(Order.customer_id == customer_id)
+        if status:
+            query = query.filter(Order.status == status)
 
-    query = query.order_by(Order.created_at.desc())
+        # 应用排序
+        sort_column = getattr(Order, sort_field, Order.created_at)
+        if sort_order == 'desc':
+            query = query.order_by(sort_column.desc())
+        else:
+            query = query.order_by(sort_column.asc())
 
-    paginated_orders = query.paginate(page=page, per_page=per_page, error_out=False)
+        # 执行分页查询
+        paginated_orders = query.paginate(page=page, per_page=per_page, error_out=False)
+        
+        # 准备响应数据
+        orders_data = []
+        for order in paginated_orders.items:
+            order_dict = order.to_dict()
+            customer = Customer.query.get(order.customer_id)
+            if customer:
+                order_dict.update({
+                    'customer_name': customer.name,
+                    'customer_phone': customer.phone,
+                })
+            orders_data.append(order_dict)
 
-    return jsonify({
-        'orders': [order.to_dict() for order in paginated_orders.items],
-        'total': paginated_orders.total,
-        'pages': paginated_orders.pages,
-        'current_page': page
-    }), 200
+        return jsonify({
+            'orders': orders_data,
+            'total': paginated_orders.total,
+            'pages': paginated_orders.pages,
+            'current_page': page,
+            'per_page': per_page
+        })
+    except Exception as e:
+        current_app.logger.error(f"获取订单列表失败: {str(e)}")
+        return jsonify({'error': '获取订单列表失败', 'message': str(e)}), 500
 
-@orders_bp.route('/<int:order_id>/status', methods=['PUT'])
+@orders_bp.route('/<order_id>', methods=['GET'])
+@cross_origin()
+def get_order(order_id):
+    try:
+        order = Order.query.get_or_404(order_id)
+        return jsonify(order.to_dict())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@orders_bp.route('/<order_id>/status', methods=['PUT'])
+@cross_origin()
 def update_order_status(order_id):
-    """
-    Updates the status of an order.
-    Expects JSON body like: {"status": "Processing"}
-    """
-    order = Order.query.get_or_404(order_id)
-    data = request.get_json()
-    new_status = data.get('status')
+    """更新订单状态"""
+    try:
+        import pdb;pdb.set_trace()
+        order = Order.query.get_or_404(order_id)
+        data = request.get_json()
+        
+        if 'status' not in data:
+            return jsonify({'error': '缺少状态字段'}), 400
+            
+        new_status = data['status']
+        allowed_statuses = ['unpaid', 'paid', 'unpurchased', 'purchased', 'unshipped', 'shipped']
+        
+        if new_status not in allowed_statuses:
+            return jsonify({'error': f'无效的状态值。必须是: {", ".join(allowed_statuses)}'}), 400
+            
+        # 更新状态
+        order.status = new_status
+        order.updated_at = datetime.now()
+            
+        db.session.commit()
+        return jsonify(order.to_dict())
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
-    # TODO: Add validation for allowed status transitions if needed
-    allowed_statuses = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled']
-    if not new_status or new_status not in allowed_statuses:
-        return jsonify({'error': f'Invalid status. Must be one of: {", ".join(allowed_statuses)}'}), 400
+@orders_bp.route('/<order_id>', methods=['DELETE'])
+@cross_origin()
+def delete_order(order_id):
+    """删除订单"""
+    try:
+        # 删除订单
+        import pdb;pdb.set_trace()
+        order = Order.query.filter_by(id=order_id).first()
+        if not order:
+            return jsonify({'error': '订单不存在'}), 404
+        # 删除订单
+        db.session.delete(order)
+        db.session.commit()
+        return jsonify({'message': '订单删除成功'}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
-    # Prevent updating status if order is already Cancelled or Delivered (optional)
-    # if order.status in ['Delivered', 'Cancelled']:
-    #     return jsonify({'error': f'Cannot update status of a {order.status} order'}), 400
+@orders_bp.route('/import', methods=['POST'])
+@cross_origin()
+def import_orders():
+    if 'file' not in request.files:
+        return jsonify({'error': '没有文件上传', 'detail': '请选择要上传的Excel文件'}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': '没有选择文件', 'detail': '请选择要上传的Excel文件'}), 400
+        
+    if not file.filename.endswith('.xlsx'):
+        return jsonify({'error': '文件格式错误', 'detail': '请上传.xlsx格式的Excel文件'}), 400
 
-    order.status = new_status
-    # Optionally update the updated_at timestamp explicitly if needed beyond onupdate
-    # order.updated_at = datetime.datetime.utcnow()
-    db.session.commit()
-    return jsonify(order.to_dict()), 200
+    try:
+        df = pd.read_excel(file)
+        required_columns = ['订单编号', '快递公司', '运单号', '我打备注']
+        import pdb;pdb.set_trace()
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            return jsonify({
+                'error': '文件格式错误',
+                'detail': f'Excel文件缺少以下必要列：{", ".join(missing_columns)}'
+            }), 400
 
-# Consider adding endpoints for deleting/cancelling orders if business logic allows
-# Example: DELETE /api/orders/<order_id>
-# Example: PUT /api/orders/<order_id>/cancel
+        # 更新订单信息
+        success_count = 0
+        error_count = 0
+        errors = []
+
+        for index, row in df.iterrows():
+            try:
+                # 检查订单编号是否为空
+                if pd.isna(row['订单编号']):
+                    error_count += 1
+                    errors.append(f"第 {index + 2} 行：订单编号为空")
+                    continue
+
+                # 查找订单
+                order = Order.query.filter_by(id=str(row['我打备注']).strip()).first()
+                if order:
+                    # 更新快递信息和备注
+                    order.customer_notes= str(row['快递公司']) if not pd.isna(row['快递公司']) else None
+                    order.internal_notes= str(row['运单号']) if not pd.isna(row['运单号']) else None
+                    db.session.commit()
+                    success_count += 1
+                else:
+                    error_count += 1
+                    errors.append(f"第 {index + 2} 行：订单号 {row['订单编号']} 不存在")
+            except Exception as e:
+                error_count += 1
+                errors.append(f"第 {index + 2} 行处理失败：{str(e)}")
+                db.session.rollback()
+
+        return jsonify({
+            'message': '导入完成',
+            'success_count': success_count,
+            'error_count': error_count,
+            'errors': errors,
+            'detail': f'成功导入 {success_count} 条记录，失败 {error_count} 条记录'
+        })
+
+    except Exception as e:
+        return jsonify({
+            'error': '处理文件失败',
+            'detail': str(e)
+        }), 500

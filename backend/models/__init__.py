@@ -4,6 +4,6 @@ db = SQLAlchemy()
 
 from .customer import Customer
 from .order import Order
-from .product import Product
+from .product import Product, ProductImage
 
-__all__ = ['db', 'Customer', 'Order', 'Product']
+__all__ = ['db', 'Customer', 'Order', 'Product', 'ProductImage']

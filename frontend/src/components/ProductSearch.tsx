@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { searchProducts, SearchResult, getImageUrl } from '../services/api';
+import { searchProducts, SearchResult, getImageUrl, getProductById, API_BASE_URL } from '../services/api';
+import { Input, Card, Image, Descriptions, message } from 'antd';
 
 export const ProductSearch: React.FC = () => {
   const [searchImage, setSearchImage] = useState<File | null>(null);
@@ -9,6 +10,7 @@ export const ProductSearch: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [product, setProduct] = useState<ProductInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropAreaRef = useRef<HTMLDivElement>(null);
 
@@ -135,10 +137,38 @@ export const ProductSearch: React.FC = () => {
     imgElement.className = `${imgElement.className} image-error`;
   };
 
+  const handleIdSearch = async (productId: string) => {
+    if (!productId.trim()) {
+      message.warning('请输入商品ID');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const data = await getProductById(productId);
+      setProduct(data);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '搜索失败');
+      setProduct(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto p-4">
       <h2 className="text-2xl font-bold mb-4">搜索商品</h2>
       
+      <div className="mb-4">
+        <Input
+          placeholder="请输入商品ID"
+          enterButton="搜索"
+          size="large"
+          loading={loading}
+          onPressEnter={(e) => handleIdSearch(e.currentTarget.value)}
+        />
+      </div>
+
       <form onSubmit={handleSearch} className="mb-8">
         <div className="mb-4">
           <label className="block text-sm font-medium mb-1">上传图片搜索</label>
@@ -255,6 +285,72 @@ export const ProductSearch: React.FC = () => {
             ))}
           </div>
         </div>
+      )}
+
+      {product && (
+        <Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <h3 className="text-xl font-bold mb-4">商品图片</h3>
+              <div className="grid grid-cols-2 gap-2">
+                {product.good_img && (
+                  Array.isArray(product.good_img) 
+                    ? product.good_img 
+                    : JSON.parse(product.good_img)
+                ).map((img, index) => (
+                  <Image
+                    key={index}
+                    src={`${API_BASE_URL}${img}`}
+                    alt={`商品图片 ${index + 1}`}
+                    style={{ width: '100%', height: 'auto' }}
+                  />
+                ))}
+              </div>
+              {product.size_img && (
+                <>
+                  <h3 className="text-xl font-bold my-4">尺码图片</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(Array.isArray(product.size_img) 
+                      ? product.size_img 
+                      : JSON.parse(product.size_img)
+                    ).map((img, index) => (
+                      <Image
+                        key={index}
+                        src={`${API_BASE_URL}${img}`}
+                        alt={`尺码图片 ${index + 1}`}
+                        style={{ width: '100%', height: 'auto' }}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            
+            <div>
+              <Descriptions title="商品信息" bordered column={1}>
+                <Descriptions.Item label="商品ID">{product.id}</Descriptions.Item>
+                <Descriptions.Item label="商品名称">{product.name}</Descriptions.Item>
+                <Descriptions.Item label="成本价">¥{product.price}</Descriptions.Item>
+                <Descriptions.Item label="销售价">¥{product.sale_price}</Descriptions.Item>
+                <Descriptions.Item label="货号">{product.product_code}</Descriptions.Item>
+                <Descriptions.Item label="图案">{product.pattern}</Descriptions.Item>
+                <Descriptions.Item label="裙长">{product.skirt_length}</Descriptions.Item>
+                <Descriptions.Item label="衣长">{product.clothing_length}</Descriptions.Item>
+                <Descriptions.Item label="风格">{product.style}</Descriptions.Item>
+                <Descriptions.Item label="裤长">{product.pants_length}</Descriptions.Item>
+                <Descriptions.Item label="袖长">{product.sleeve_length}</Descriptions.Item>
+                <Descriptions.Item label="流行元素">{product.fashion_elements}</Descriptions.Item>
+                <Descriptions.Item label="工艺">{product.craft}</Descriptions.Item>
+                <Descriptions.Item label="上市年份/季节">{product.launch_season}</Descriptions.Item>
+                <Descriptions.Item label="主面料成分">{product.main_material}</Descriptions.Item>
+                <Descriptions.Item label="颜色">{product.color}</Descriptions.Item>
+                <Descriptions.Item label="尺码">{product.size}</Descriptions.Item>
+                <Descriptions.Item label="工厂名称">{product.factory_name}</Descriptions.Item>
+                <Descriptions.Item label="描述">{product.description}</Descriptions.Item>
+              </Descriptions>
+            </div>
+          </div>
+        </Card>
       )}
     </div>
   );

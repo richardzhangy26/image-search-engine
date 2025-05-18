@@ -1,22 +1,33 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
-
+// API基础URL
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 export interface ProductInfo {
-  product_id: string;
+  id?: string;
   name: string;
-  attributes: Record<string, string>;
-  price: number;
   description: string;
+  price: number;
+  sale_price: number;
+  product_code?: string;        // 货号
+  pattern?: string;            // 图案
+  skirt_length?: string;       // 裙长
+  clothing_length?: string;    // 衣长
+  style?: string;             // 风格
+  pants_length?: string;      // 裤长
+  sleeve_length?: string;     // 袖长
+  fashion_elements?: string;  // 流行元素
+  craft?: string;            // 工艺
+  launch_season?: string;    // 上市年份/季节
+  main_material?: string;    // 主面料成分
+  color?: string;           // 颜色
+  size?: string;           // 尺码
+  size_img?: string;      // 尺码图片URL
+  good_img?: string;      // 商品图片URL
+  factory_name?: string;  // 工厂名称
 }
 
-export interface SearchResult {
-  product_id: string;
-  name: string;
-  attributes: Record<string, string>;
-  price: number;
-  description: string;
+export interface SearchResult extends ProductInfo {
   similarity: number;
   image_path: string;
-  original_path?: string; // 添加原始路径用于调试
+  original_path?: string;
 }
 
 export interface ProductDetails extends ProductInfo {
@@ -80,10 +91,8 @@ export const getImageUrl = (imagePath: string): string => {
   return fullUrl;
 };
 
-export const getProductById = async (
-  productId: string
-): Promise<ProductDetails> => {
-  const response = await fetch(`${API_BASE_URL}/products/${productId}`, {
+export const getProductById = async (productId: string): Promise<ProductInfo> => {
+  const response = await fetch(`${API_BASE_URL}/api/products/${productId}`, {
     method: 'GET',
   });
 
@@ -119,26 +128,6 @@ export const uploadProduct = async (
   return response.json();
 };
 
-export const getCustomers = async (): Promise<Customer[]> => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/customers`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || '获取客户列表失败');
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Failed to fetch customers:', error);
-    throw error instanceof Error ? error : new Error('获取客户列表失败');
-  }
-};
 
 export const searchProducts = async (
   image: File,
@@ -149,7 +138,7 @@ export const searchProducts = async (
   formData.append('top_k', topK.toString());
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/search`, {
+    const response = await fetch(`${API_BASE_URL}/api/products/search`, {
       method: 'POST',
       body: formData,
     });
@@ -230,4 +219,79 @@ export const addCustomer = async (customerInfo: AddressInfo): Promise<{ message:
   }
 
   return response.json();
+};
+
+// 获取所有产品
+export const getProducts = async (): Promise<ProductInfo[]> => {
+  const response = await fetch(`${API_BASE_URL}/api/products`);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || '获取产品列表失败');
+  }
+  return response.json();
+};
+
+// 添加产品
+export const addProduct = async (formData: FormData): Promise<{ message: string; id: string }> => {
+  const response = await fetch(`${API_BASE_URL}/api/products`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || '添加产品失败');
+  }
+
+  return response.json();
+};
+
+// 更新产品
+export const updateProduct = async (productId: string, formData: FormData): Promise<{ message: string }> => {
+  const response = await fetch(`${API_BASE_URL}/api/products/${productId}`, {
+    method: 'PUT',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || '更新产品失败');
+  }
+
+  return response.json();
+};
+
+// 删除产品
+export const deleteProduct = async (productId: string): Promise<{ message: string }> => {
+  const response = await fetch(`${API_BASE_URL}/api/products/${productId}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || '删除产品失败');
+  }
+
+  return response.json();
+};
+
+// 删除产品图片
+export const deleteProductImage = async (productId: string, filename: string) => {
+  // 确保文件名不包含开头的斜杠
+  const cleanFilename = filename.replace(/^\/+/, '');
+  
+  const response = await fetch(`${API_BASE_URL}/api/products/images/${productId}/${cleanFilename}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || '删除图片失败');
+  }
+  
+  return await response.json();
 };

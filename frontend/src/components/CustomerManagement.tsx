@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Table, Button, Modal, Form, Input, message, Space, Popconfirm } from 'antd';
 import { DeleteOutlined, EditOutlined, CopyOutlined } from '@ant-design/icons';
 import AddressParser from './AddressParser';
+import { API_BASE_URL } from '../services/api';
 
 interface Customer {
   id: number;
@@ -23,17 +24,21 @@ const CustomerManagement: React.FC = () => {
   const [isUpdateModalVisible, setIsUpdateModalVisible] = useState(false);
   const [updateForm] = Form.useForm();
   const [nameFilter, setNameFilter] = useState('');
+  const [phoneFilter, setPhoneFilter] = useState('');
   const [sortOrder, setSortOrder] = useState<'ascend' | 'descend' | null>(null);
 
-  const fetchCustomers = async (name?: string, order?: string) => {
+  const fetchCustomers = async (name?: string, phone?: string, order?: string) => {
     try {
       setLoading(true);
       setError(null);
-      let url = 'http://localhost:5000/api/customers';
+      let url = `${API_BASE_URL}/api/customers`;
       const params = new URLSearchParams();
       
       if (name) {
         params.append('name', name);
+      }
+      if (phone) {
+        params.append('phone', phone);
       }
       if (order) {
         params.append('order', order === 'ascend' ? 'asc' : 'desc');
@@ -64,15 +69,15 @@ const CustomerManagement: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchCustomers(nameFilter, sortOrder === 'descend' ? 'desc' : 'asc');
-  }, [nameFilter, sortOrder]);
+    fetchCustomers(nameFilter, phoneFilter, sortOrder === 'descend' ? 'desc' : 'asc');
+  }, [nameFilter, phoneFilter, sortOrder]);
 
   const handleAddressSelected = async (addressInfo: any) => {
     if (selectedCustomer) {
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch(`http://localhost:5000/api/customers/${selectedCustomer.id}/address`, {
+        const response = await fetch(`${API_BASE_URL}/api/customers/${selectedCustomer.id}/address`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -97,7 +102,7 @@ const CustomerManagement: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('http://localhost:5000/api/customers', {
+      const response = await fetch(`${API_BASE_URL}/api/customers`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -123,7 +128,7 @@ const CustomerManagement: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`http://localhost:5000/api/customers/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/customers/${id}`, {
         method: 'DELETE',
         headers: {
           'Accept': 'application/json'
@@ -145,7 +150,7 @@ const CustomerManagement: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`http://localhost:5000/api/customers/${selectedCustomer?.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/customers/${selectedCustomer?.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -167,10 +172,36 @@ const CustomerManagement: React.FC = () => {
     }
   };
 
-  const handleCopyWechat = (wechat: string) => {
-    navigator.clipboard.writeText(wechat)
-      .then(() => message.success('微信号已复制到剪贴板'))
-      .catch(() => message.error('复制失败'));
+  const handleCopy = (text: string) => {
+    if (!text) return;
+    
+    try {
+      // 创建临时文本区域
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      
+      // 确保文本区域在视觉上不可见
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      textArea.style.top = '0';
+      
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      
+      // 执行复制命令
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      
+      if (successful) {
+        message.success('已复制到剪贴板');
+      } else {
+        message.error('复制失败');
+      }
+    } catch (err) {
+      console.error('复制失败，详细错误:', err);
+      message.error('复制失败');
+    }
   };
 
   const showUpdateModal = (customer: Customer) => {
@@ -180,6 +211,12 @@ const CustomerManagement: React.FC = () => {
   };
 
   const columns = [
+    {
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 80,
+    },
     {
       title: '姓名',
       dataIndex: 'name',
@@ -233,7 +270,10 @@ const CustomerManagement: React.FC = () => {
         },
       }),
       render: (name: string, record: Customer) => (
-        <span title={`拼音: ${record.pinyin}`}>{name}</span>
+        <Space>
+          <span title={`拼音: ${record.pinyin}`}>{name}</span>
+          <CopyOutlined onClick={() => handleCopy(name)} className="cursor-pointer text-gray-400 hover:text-blue-500" />
+        </Space>
       ),
     },
     {
@@ -243,7 +283,7 @@ const CustomerManagement: React.FC = () => {
       render: (wechat: string) => (
         <Space>
           <span>{wechat}</span>
-          <CopyOutlined onClick={() => handleCopyWechat(wechat)} />
+          <CopyOutlined onClick={() => handleCopy(wechat)} className="cursor-pointer text-gray-400 hover:text-blue-500" />
         </Space>
       ),
     },
@@ -251,11 +291,73 @@ const CustomerManagement: React.FC = () => {
       title: '电话',
       dataIndex: 'phone',
       key: 'phone',
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+        <div style={{ padding: 8 }}>
+          <Input
+            placeholder="搜索电话号码"
+            value={selectedKeys[0]}
+            onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+            onPressEnter={() => {
+              confirm();
+              setPhoneFilter(selectedKeys[0] || '');
+            }}
+            style={{ width: 188, marginBottom: 8, display: 'block' }}
+          />
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => {
+                confirm();
+                setPhoneFilter(selectedKeys[0] || '');
+              }}
+              size="small"
+              style={{ width: 90 }}
+            >
+              搜索
+            </Button>
+            <Button
+              onClick={() => {
+                clearFilters?.();
+                setPhoneFilter('');
+              }}
+              size="small"
+              style={{ width: 90 }}
+            >
+              重置
+            </Button>
+          </Space>
+        </div>
+      ),
+      filterIcon: (filtered: boolean) => (
+        <svg
+          viewBox="64 64 896 896"
+          focusable="false"
+          data-icon="search"
+          width="1em"
+          height="1em"
+          fill={filtered ? '#1890ff' : undefined}
+          aria-hidden="true"
+        >
+          <path d="M909.6 854.5L649.9 594.8C690.2 542.7 712 479 712 412c0-80.2-31.3-155.4-87.9-212.1-56.6-56.7-132-87.9-212.1-87.9s-155.5 31.3-212.1 87.9C143.2 256.5 112 331.8 112 412c0 80.1 31.3 155.5 87.9 212.1C256.5 680.8 331.8 712 412 712c67 0 130.6-21.8 182.7-62l259.7 259.6a8.2 8.2 0 0011.6 0l43.6-43.5a8.2 8.2 0 000-11.6zM570.4 570.4C528 612.7 471.8 636 412 636s-116-23.3-158.4-65.6C211.3 528 188 471.8 188 412s23.3-116.1 65.6-158.4C296 211.3 352.2 188 412 188s116.1 23.2 158.4 65.6S636 352.2 636 412s-23.3 116.1-65.6 158.4z"></path>
+        </svg>
+      ),
+      render: (phone: string) => (
+        <Space>
+          <span>{phone}</span>
+          <CopyOutlined onClick={() => handleCopy(phone)} className="cursor-pointer text-gray-400 hover:text-blue-500" />
+        </Space>
+      ),
     },
     {
       title: '默认地址',
       dataIndex: 'default_address',
       key: 'default_address',
+      render: (address: string) => (
+        <Space>
+          <span title={address}>{address && address.length > 3 ? `${address.substring(0, 3)}...` : address}</span>
+          <CopyOutlined onClick={() => handleCopy(address)} className="cursor-pointer text-gray-400 hover:text-blue-500" />
+        </Space>
+      ),
     },
     {
       title: '操作',
@@ -298,58 +400,34 @@ const CustomerManagement: React.FC = () => {
               columns={columns}
               dataSource={customers}
               rowKey="id"
-              pagination={{ pageSize: 10 }}
+              pagination={{
+                pageSize: 5,
+                showSizeChanger: false,
+                showQuickJumper: true,
+                showTotal: (total) => `共 ${total} 条记录`,
+              }}
             />
           )}
         </div>
         
         <div>
-          <AddressParser onAddressSelected={handleAddressSelected} />
+          <AddressParser 
+            onAddressSelected={handleAddressSelected} 
+            onAddressParseSuccess={() => fetchCustomers(nameFilter, phoneFilter, sortOrder === 'descend' ? 'desc' : 'asc')} 
+          />
         </div>
       </div>
 
       <Modal
-        title="添加客户"
+        title="新增客户"
         open={isModalVisible}
         onCancel={() => setIsModalVisible(false)}
         footer={null}
       >
-        <Form form={form} onFinish={handleSubmit} layout="vertical">
-          <Form.Item
-            name="name"
-            label="姓名"
-            rules={[{ required: true, message: '请输入姓名' }]}
-          >
-            <Input />
-          </Form.Item>
-
-          <Form.Item
-            name="wechat"
-            label="微信号"
-            rules={[{ required: true, message: '请输入微信号' }]}
-          >
-            <Input />
-          </Form.Item>
-
-          <Form.Item
-            name="default_address"
-            label="地址"
-            rules={[{ required: true, message: '请输入地址' }]}
-          >
-            <Input.TextArea rows={3} />
-          </Form.Item>
-          <Form.Item
-            name="phone"
-            label="电话"
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" block>
-              提交
-            </Button>
-          </Form.Item>
-        </Form>
+        <AddressParser 
+          onAddressSelected={handleAddressSelected} 
+          onAddressParseSuccess={() => fetchCustomers(nameFilter, phoneFilter, sortOrder === 'descend' ? 'desc' : 'asc')} 
+        />
       </Modal>
 
       <Modal

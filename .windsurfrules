@@ -1,0 +1,6 @@
+1. it is a crm system for a fashion company
+2. the database is mysql
+3. the frontend is a react app
+4. the backend is a flask app
+5.前端preview启动是npm run dev
+6.后端不要启动

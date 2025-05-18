@@ -1,253 +1,587 @@
 from flask import Blueprint, request, jsonify, current_app, send_from_directory
 from werkzeug.utils import secure_filename
 import os
+import requests
 from pathlib import Path
-# Assuming VectorProductIndex and ProductInfo are correctly importable
-# You might need to adjust the import path based on your project structure
-from ..product_search import VectorProductIndex, ProductInfo # Adjusted import
-from ..models import db, Product # Import the new Product model
-
+import json
+import csv
+import io
+import time
+from product_search import VectorProductIndex# 导入向量搜索和产品信息
+from models import db, Product,ProductImage,Order# 导入Product模型
+from .oss import get_oss_client  # 导入OSS客户端
+import hashlib
+import uuid
+import ast
+from flask_cors import cross_origin
 products_bp = Blueprint('products', __name__, url_prefix='/api/products')
 
 # Helper function (consider moving to a utils file)
 def allowed_file(filename):
-    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    """检查文件扩展名是否允许"""
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# --- Migrated from app.py ---
-# Note: This needs integration with the new `Product` DB model
-@products_bp.route('', methods=['POST'])
-def add_product():
-    """
-    Adds a new product with image and details, storing info in DB and vector index.
-    """
-    try:
-        if 'images' not in request.files:
-            return jsonify({'error': 'No image uploaded'}), 400
-
-        files = request.files.getlist('images')
-        product_info_list = []
-        added_products = []
-
-        # Get product details from form data
-        name = request.form.get('name')
-        description = request.form.get('description', '')
-        price_str = request.form.get('price')
-        sku = request.form.get('sku') # Get SKU
-
-        if not all([name, price_str, sku]):
-             return jsonify({'error': 'Missing required fields: name, price, sku'}), 400
-
-        try:
-            price = float(price_str)
-        except ValueError:
-            return jsonify({'error': 'Invalid price format'}), 400
-
-        # --- Database Integration ---
-        # Check if SKU already exists
-        existing_product = Product.query.filter_by(sku=sku).first()
-        if existing_product:
-            return jsonify({'error': f'SKU {sku} already exists'}), 409
-
-        # Process the first image (assuming one image per product for now)
-        file = files[0]
-        if file and allowed_file(file.filename):
-            filename = secure_filename(f"{sku}_{file.filename}") # Use SKU in filename
-            upload_folder = current_app.config['UPLOAD_FOLDER']
-            # Construct the relative path correctly based on UPLOAD_FOLDER
-            # Example: if UPLOAD_FOLDER is /abs/path/to/data/product_search/images
-            # We want image_path like 'product_search/images/sku_image.jpg'
-            base_data_dir = Path(upload_folder).parent.parent # Assumes data/product_search/images structure
-            relative_path = os.path.relpath(os.path.join(upload_folder, filename), base_data_dir)
-            # Ensure OS-independent path separators
-            relative_path = relative_path.replace(os.sep, '/')
-
-            full_path = os.path.join(upload_folder, filename)
-            # Ensure the target directory exists before saving
-            os.makedirs(os.path.dirname(full_path), exist_ok=True)
-            file.save(full_path)
-
-            # Create Product entry in DB first
-            new_product = Product(
-                sku=sku,
-                name=name,
-                description=description,
-                price=price,
-                image_path=relative_path # Save relative path
-            )
-            db.session.add(new_product)
-            db.session.commit() # Commit to get the new_product.id
-
-            # --- Vector Index Integration ---
-            # Use the DB product ID for the vector index
-            product_id_for_vector = str(new_product.id)
-            # Assume VectorProductIndex uses a simple ID, name, image_path structure for now
-            product_info = ProductInfo(product_id=product_id_for_vector, name=name, image_path=full_path)
-            product_info_list.append(product_info)
-            added_products.append(new_product.to_dict()) # Add DB representation
-
-        else:
-             # Handle case where file is not allowed or not present correctly
-             return jsonify({'error': 'Invalid or missing image file'}), 400
-
-        # Add product info (vector) to the index
-        product_index = current_app.config['PRODUCT_INDEX'] # Get index from app config
-        product_index.add_products(product_info_list)
-
-        # Save the updated index
-        index_path = current_app.config['INDEX_PATH']
-        product_index.save_index(index_path)
-
-        # Prepare response with image URL
-        response_data = new_product.to_dict()
-        response_data['image_url'] = f"/api/images/{response_data['image_path']}"
-
-        return jsonify({
-            'message': f'Product {name} added successfully.',
-            'product': response_data
-        }), 201
-
-    except Exception as e:
-        current_app.logger.error(f"Error adding product: {e}")
-        db.session.rollback() # Rollback DB changes on error
-        return jsonify({'error': 'Internal server error adding product'}), 500
-
-
-# --- Existing search logic (needs modification) ---
-@products_bp.route('/search', methods=['POST'])
-def search_products():
-    """
-    Searches for products similar to an uploaded image or text query.
-    Returns product details from the Database based on IDs found in the vector index.
-    """
-    search_type = request.form.get('type', 'image') # 'image' or 'text'
-    num_results = int(request.form.get('num_results', 5))
-    product_index = current_app.config['PRODUCT_INDEX']
-
-    try:
-        if search_type == 'image':
-            if 'query_image' not in request.files:
-                return jsonify({'error': 'No query image provided'}), 400
-            file = request.files['query_image']
-            if file and allowed_file(file.filename):
-                 # Save temp file or process in memory if possible
-                 # Ensure temp directory exists
-                temp_dir = Path(current_app.config['UPLOAD_FOLDER']) / 'temp'
-                temp_dir.mkdir(exist_ok=True)
-                temp_path = temp_dir / f"temp_{secure_filename(file.filename)}"
-                file.save(temp_path)
-                results = product_index.search_by_image(str(temp_path), top_k=num_results)
-                os.remove(temp_path) # Clean up temp file
-            else:
-                return jsonify({'error': 'Invalid query image file'}), 400
-        elif search_type == 'text':
-            query_text = request.form.get('query_text')
-            if not query_text:
-                return jsonify({'error': 'No query text provided'}), 400
-            results = product_index.search_by_text(query_text, top_k=num_results)
-        else:
-            return jsonify({'error': 'Invalid search type'}), 400
-
-        # --- Fetch details from Database ---
-        if not results:
-             return jsonify({'results': []}), 200
-
-        # Ensure product IDs are integers for DB query
-        product_ids = []
-        for res in results:
-            try:
-                product_ids.append(int(res.product_id))
-            except (ValueError, TypeError):
-                current_app.logger.warning(f"Skipping invalid product ID from vector search: {res.product_id}")
-                continue
-
-        if not product_ids:
-            return jsonify({'results': []}), 200
-
-        # Query the database for products matching the IDs found
-        matched_products = Product.query.filter(Product.id.in_(product_ids)).all()
-        # Create a dictionary for quick lookup by ID
-        products_dict = {p.id: p.to_dict() for p in matched_products}
-
-        # Combine DB details with similarity scores
-        final_results = []
-        for res in results:
-            try:
-                 product_id = int(res.product_id)
-            except (ValueError, TypeError):
-                 continue # Skip if ID was invalid
-
-            if product_id in products_dict:
-                product_data = products_dict[product_id]
-                product_data['similarity_score'] = res.score # Add score from vector search
-                 # Ensure image path is converted to a URL accessible by the frontend
-                product_data['image_url'] = f"/api/images/{product_data['image_path']}" # Example URL structure
-                final_results.append(product_data)
-            else:
-                current_app.logger.warning(f"Product ID {product_id} found in vector index but not in database.")
-
-
-        # Sort results based on original vector search score (highest first)
-        final_results.sort(key=lambda x: x.get('similarity_score', 0), reverse=True)
-
-        return jsonify({'results': final_results}), 200
-
-    except Exception as e:
-        current_app.logger.error(f"Error searching products: {e}")
-        # Clean up temp file in case of error during image search
-        if search_type == 'image' and 'temp_path' in locals() and os.path.exists(temp_path):
-             try:
-                 os.remove(temp_path)
-             except OSError as rm_err:
-                 current_app.logger.error(f"Error removing temp file {temp_path}: {rm_err}")
-        return jsonify({'error': 'Internal server error during search'}), 500
-
-
-# --- Add endpoint to get a single product by ID ---
-@products_bp.route('/<int:product_id>', methods=['GET'])
-def get_product(product_id):
-    product = Product.query.get_or_404(product_id)
-    product_data = product.to_dict()
-    product_data['image_url'] = f"/api/images/{product_data['image_path']}" # Generate image URL
-    return jsonify(product_data), 200
-
-# --- Add endpoint to list all products (optional, consider pagination) ---
+# 获取产品列表
 @products_bp.route('', methods=['GET'])
-def list_products():
-    # Basic pagination example
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 10, type=int)
+@cross_origin()
+def get_products():
+    try:
+        # 使用ORM查询所有产品
+        products = Product.query.order_by(Product.created_at.desc()).all()
+        
+        # 将产品对象转换为字典列表
+        product_list = [product.to_dict() for product in products]
+        
+        return jsonify(product_list)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-    # Add sorting capabilities (example: sort by name or price)
-    sort_by = request.args.get('sort_by', 'name') # Default sort by name
-    sort_order = request.args.get('sort_order', 'asc') # Default ascending
+# 添加新产品
+@products_bp.route('', methods=['POST'])
+@cross_origin()
+def add_product():
+    try:
+        # 获取产品数据
+        product_data = json.loads(request.form.get('product'))
+        # 创建新产品对象
+        product = Product.from_dict(product_data)
+        
+        # 先保存到数据库以获取产品ID
+        db.session.add(product)
+        db.session.commit()
+        
+        # 获取产品ID
+        product_id = product.id
+        
+        # 处理尺码图片
+        size_images = request.files.getlist('size_images')
+        size_img_urls = []
+        for image in size_images:
+            if image and allowed_file(image.filename):
+                filename = secure_filename(image.filename)
+                # 生成唯一文件名
+                unique_filename = f"{uuid.uuid4()}_{filename}"
+                # 创建按产品ID组织的目录
+                product_size_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'size_images', str(product_id))
+                os.makedirs(product_size_dir, exist_ok=True)
+                # 保存文件
+                image_path = os.path.join(product_size_dir, unique_filename)
+                image.save(image_path)
+                # 添加URL到列表
+                size_img_urls.append(f"/uploads/size_images/{product_id}/{unique_filename}")
+        
+        # 处理商品图片
+        good_images = request.files.getlist('good_images')
+        good_img_urls = []
+        for image in good_images:
+            if image and allowed_file(image.filename):
+                filename = secure_filename(image.filename)
+                # 生成唯一文件名
+                unique_filename = f"{uuid.uuid4()}_{filename}"
+                # 创建按产品ID组织的目录
+                product_good_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', str(product_id))
+                os.makedirs(product_good_dir, exist_ok=True)
+                # 保存文件
+                image_path = os.path.join(product_good_dir, unique_filename)
+                image.save(image_path)
+                # 添加URL到列表
+                good_img_urls.append(f"/uploads/good_images/{product_id}/{unique_filename}")
+        
+        # 更新产品的图片URL
+        product.size_img = json.dumps(size_img_urls)
+        product.good_img = json.dumps(good_img_urls)
+        
+        # 更新产品信息
+        db.session.commit()
+        import pdb;pdb.set_trace()
+        # 如果配置了向量搜索
+        if current_app.config.get('PRODUCT_INDEX'):
+            try:
 
-    sort_column = getattr(Product, sort_by, Product.name) # Default to name if invalid
-    if sort_order == 'desc':
-        order = sort_column.desc()
-    else:
-        order = sort_column.asc()
+                # 添加到向量索引
+                product_index = current_app.config['PRODUCT_INDEX']
+                if good_img_urls:  # 使用第一张商品图片作为索引
+                    # 更新图片路径，使用新的目录结构
+                   for good_img_url in good_img_urls: 
+                    image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', str(product_id), os.path.basename(good_img_url.split('/')[-1]))
+                    # 创建产品信息对象
+                    feature = product_index.extract_feature(image_path)
+                    product_image = ProductImage(
+                        product_id=product_id,
+                        image_path=good_img_url,
+                        vector=feature
+                    )
+                    db.session.add(product_image)
+                db.session.commit()
+                current_app.logger.info(f"已将产品 {product.id} 添加到向量索引")
+            except Exception as e:
+                current_app.logger.error(f"添加产品到向量索引时出错: {e}")
+        
+        return jsonify({
+            'message': '产品添加成功',
+            'id': product.id
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
-    paginated_products = Product.query.order_by(order).paginate(page=page, per_page=per_page, error_out=False)
+# 更新产品信息
+@products_bp.route('/<product_id>', methods=['PUT'])
+@cross_origin()
+def update_product(product_id):
+    try:
+        # 查找产品
+        product = Product.query.filter_by(id=product_id).first()
+        if not product:
+            return jsonify({'error': '产品不存在'}), 404
 
-    products_data = []
-    for product in paginated_products.items:
-        product_dict = product.to_dict()
-        product_dict['image_url'] = f"/api/images/{product_dict['image_path']}" # Generate image URL
-        products_data.append(product_dict)
+        # 获取产品数据
+        product_data = json.loads(request.form.get('product'))
+        
+        # 处理尺码图片
+        size_images = request.files.getlist('size_images')
+        if size_images:
+            size_img_urls = []
+            for image in size_images:
+                if image and allowed_file(image.filename):
+                    filename = secure_filename(image.filename)
+                    # 生成唯一文件名
+                    unique_filename = f"{uuid.uuid4()}_{filename}"
+                    # 保存文件
+                    image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'size_images', unique_filename)
+                    os.makedirs(os.path.dirname(image_path), exist_ok=True)
+                    image.save(image_path)
+                    # 添加URL到列表
+                    size_img_urls.append(f"/uploads/size_images/{unique_filename}")
+            # 只有在有新图片上传时才更新
+            product.size_img = json.dumps(size_img_urls)
+        
+        # 处理商品图片
+        good_images = request.files.getlist('good_images')
+        if good_images:
+            good_img_urls = []
+            for image in good_images:
+                if image and allowed_file(image.filename):
+                    filename = secure_filename(image.filename)
+                    # 生成唯一文件名
+                    unique_filename = f"{uuid.uuid4()}_{filename}"
+                    # 保存文件
+                    image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', unique_filename)
+                    os.makedirs(os.path.dirname(image_path), exist_ok=True)
+                    image.save(image_path)
+                    # 添加URL到列表
+                    good_img_urls.append(f"/uploads/good_images/{unique_filename}")
+            # 只有在有新图片上传时才更新
+            product.good_img = json.dumps(good_img_urls)
 
-    return jsonify({
-        'products': products_data,
-        'total': paginated_products.total,
-        'pages': paginated_products.pages,
-        'current_page': page
-    }), 200
+        # 更新其他字段
+        for key, value in product_data.items():
+            if key not in ['id', 'size_img', 'good_img'] and hasattr(product, key):
+                setattr(product, key, value)
 
-# Note: The CSV upload endpoint ([add_products_from_csv](cci:1://file:///Users/richardzhang/github/image-search-engine/backend/app.py:206:0-334:46)) also needs to be migrated
-# and updated to work with the Product DB model and potentially the vector index.
-# This is left as a TODO for now.
+        db.session.commit()
 
-# Note: The image serving endpoint ([serve_product_image_cn](cci:1://file:///Users/richardzhang/github/image-search-engine/backend/app.py:337:0-356:26) or similar)
-# might need adjustment depending on how image paths are stored and accessed.
-# A generic static file server for images referenced by their path might be simpler.
-# See the proposed `/api/images/<path:subpath>` route in app.py modification.
+        # 如果配置了向量搜索且有新的商品图片
+        if current_app.config.get('PRODUCT_INDEX') and good_images:
+            try:
+                # 创建产品信息对象
+                product_info = ProductInfo(
+                    id=product.id,
+                    name=product.name,
+                    attributes={},
+                    price=float(product.price),
+                    description=product.description or ''
+                )
+                
+                # 更新向量索引
+                product_index = current_app.config['PRODUCT_INDEX']
+                image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', os.path.basename(good_img_urls[0]))
+                product_index.add_product(product_info, image_path)
+                
+                current_app.logger.info(f"已更新产品 {product.id} 的向量索引")
+            except Exception as e:
+                current_app.logger.error(f"更新产品向量索引时出错: {e}")
+
+        return jsonify({'message': '产品更新成功'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# 删除产品
+@products_bp.route('/<product_id>', methods=['DELETE'])
+@cross_origin()
+def delete_product(product_id):
+    try:
+        # 查找产品
+        product = Product.query.filter_by(id=product_id).first()
+        import pdb; pdb.set_trace()
+        if not product:
+            return jsonify({'error': '产品不存在'}), 404
+        
+        # 从数据库中删除
+        db.session.delete(product)
+        db.session.commit()
+        return jsonify({'message': '产品删除成功'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# 搜索产品
+@products_bp.route('/search', methods=['POST'])
+@cross_origin()
+def search_products():
+    try:
+        # 检查是否配置了向量搜索
+        if 'PRODUCT_INDEX' not in current_app.config:
+            return jsonify({'error': '向量搜索未配置'}), 500
+        import pdb;pdb.set_trace() 
+        product_index = current_app.config['PRODUCT_INDEX']
+        
+        # 处理图片上传
+        if 'image' in request.files:
+            file = request.files['image']
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+                file.save(filepath)
+                
+                # 使用向量索引搜索相似产品
+                results = product_index.search(filepath, top_k=10)
+                
+                # 清理上传的文件
+                os.remove(filepath)
+                
+                # 获取产品详细信息
+                product_ids = [result.id for result in results]
+                products = Product.query.filter(Product.id.in_(product_ids)).all()
+                
+                # 将产品对象转换为字典
+                product_list = []
+                for product in products:
+                    product_dict = product.to_dict()
+                    # 添加相似度分数
+                    for result in results:
+                        if result.id == product.id:
+                            product_dict['similarity'] = result.similarity
+                            break
+                    product_list.append(product_dict)
+                
+                # 按相似度排序
+                product_list.sort(key=lambda x: x.get('similarity', 0), reverse=True)
+                
+                return jsonify(product_list)
+        
+        # 处理文本搜索
+        elif 'query' in request.json:
+            query = request.json['query']
+            
+            # 使用向量索引搜索相关产品
+            results = product_index.search_by_text(query, top_k=10)
+            
+            # 获取产品详细信息
+            product_ids = [result.id for result in results]
+            products = Product.query.filter(Product.id.in_(product_ids)).all()
+            
+            # 将产品对象转换为字典
+            product_list = []
+            for product in products:
+                product_dict = product.to_dict()
+                # 添加相似度分数
+                for result in results:
+                    if result.id == product.id:
+                        product_dict['similarity'] = result.similarity
+                        break
+                product_list.append(product_dict)
+            
+            # 按相似度排序
+            product_list.sort(key=lambda x: x.get('similarity', 0), reverse=True)
+            
+            return jsonify(product_list)
+        
+        return jsonify({'error': '未提供搜索参数'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# 获取单个产品
+@products_bp.route('/<product_id>', methods=['GET'])
+@cross_origin()
+def get_product(product_id):
+    try:
+        # 查询产品
+        product = Product.query.filter_by(id=product_id).first()
+        
+        if not product:
+            return jsonify({'error': '产品不存在'}), 404
+            
+        # 转换为字典并返回
+        return jsonify(product.to_dict())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# 上传产品图片到OSS
+@products_bp.route('/upload_image', methods=['POST'])
+@cross_origin()
+def upload_product_image():
+    try:
+        # 检查是否有文件
+        if 'file' not in request.files:
+            return jsonify({'error': '没有文件'}), 400
+        
+        file = request.files['file']
+        
+        if file.filename == '':
+            return jsonify({'error': '没有选择文件'}), 400
+        
+        if file and allowed_file(file.filename):
+            # 生成安全的文件名
+            filename = secure_filename(file.filename)
+            
+            # 生成唯一的文件名
+            unique_filename = f"{uuid.uuid4().hex}_{filename}"
+            
+            # 保存到临时目录
+            temp_dir = Path(current_app.config['UPLOAD_FOLDER']) / 'temp'
+            temp_dir.mkdir(exist_ok=True)
+            
+            temp_path = temp_dir / unique_filename
+            file.save(temp_path)
+            
+            # 上传到OSS
+            try:
+                oss_client = get_oss_client()
+                
+                # 设置OSS路径
+                oss_path = f"products/{unique_filename}"
+                
+                # 上传文件
+                oss_client.put_object_from_file(oss_path, str(temp_path))
+                
+                # 生成OSS URL
+                oss_url = f"https://your-bucket-name.oss-cn-region.aliyuncs.com/{oss_path}"
+                
+                # 清理临时文件
+                os.remove(temp_path)
+                
+                return jsonify({
+                    'message': '图片上传成功',
+                    'filename': unique_filename,
+                    'oss_path': oss_path,
+                    'url': oss_url
+                })
+            except Exception as e:
+                # 清理临时文件
+                os.remove(temp_path)
+                return jsonify({'error': f'上传到OSS时出错: {str(e)}'}), 500
+        
+        return jsonify({'error': '不允许的文件类型'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# 删除产品图片
+@products_bp.route('/images/<product_id>/<image_filename>', methods=['DELETE'])
+@cross_origin()
+def delete_product_image(product_id, image_filename):
+    try:
+        import pdb;pdb.set_trace()
+        # 查找产品
+        product = Product.query.get_or_404(product_id)
+        
+        # 构建图片路径
+        image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', image_filename)
+        
+        # 检查文件是否存在
+        if not os.path.exists(image_path):
+            return jsonify({'error': '图片不存在'}), 404
+            
+        # 删除物理文件
+        os.remove(image_path)
+        # 更新商品图片列表
+        if product.good_img:
+            try:
+                good_images = json.loads(product.good_img)
+                good_images = [img for img in good_images if image_filename not in img]
+                product.good_img = json.dumps(good_images, ensure_ascii=False)
+            except json.JSONDecodeError:
+                current_app.logger.error(f"商品 {product_id} 的good_img字段JSON格式错误")
+        
+        # 更新尺码图片列表
+        if product.size_img:
+            try:
+                size_images = json.loads(product.size_img)
+                size_images = [img for img in size_images if image_filename not in img]
+                product.size_img = json.dumps(size_images, ensure_ascii=False)
+            except json.JSONDecodeError:
+                current_app.logger.error(f"商品 {product_id} 的size_img字段JSON格式错误")
+        
+        # 更新主图片
+        if product.image_url and image_filename in product.image_url:
+            product.image_url = None
+            
+        # 提交数据库更改
+        db.session.commit()
+        
+        return jsonify({
+            'message': '图片删除成功',
+            'good_images': json.loads(product.good_img) if product.good_img else [],
+            'size_images': json.loads(product.size_img) if product.size_img else []
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# 上传CSV文件导入商品数据
+@products_bp.route('/upload_csv', methods=['POST'])
+@cross_origin()
+def upload_csv():
+    try:
+        # 检查是否有文件
+        if 'file' not in request.files:
+            return jsonify({'error': '没有文件'}), 400
+        
+        file = request.files['file']
+        
+        if file.filename == '':
+            return jsonify({'error': '没有选择文件'}), 400
+        
+        # 读取CSV文件
+        csv_content = file.read().decode('utf-8')
+        csv_file = io.StringIO(csv_content)
+        csv_reader = csv.DictReader(csv_file)
+        
+        # 导入结果统计
+        stats = {
+            'total': 0,
+            'success': 0,
+            'failed': 0,
+            'errors': []
+        }
+        
+        # 处理每一行
+        for row in csv_reader:
+            stats['total'] += 1
+            
+            try:
+                # 生成产品ID
+                product_id = generate_product_id(row.get('name', ''), row.get('factory_name', ''))
+                
+                # 解析列表字段
+                
+                # 创建产品对象
+                product = Product()
+                product.product_id = product_id
+                product.name = row.get('name', '')
+                product.description = row.get('description', '')
+                product.price = float(row.get('price', 0))
+                product.sale_price = float(row.get('sale_price', 0))
+                product.product_code = row.get('product_code', '')
+                product.pattern = row.get('pattern', '')
+                product.skirt_length = row.get('skirt_length', '')
+                product.clothing_length = row.get('clothing_length', '')
+                product.style = row.get('style', '')
+                product.pants_length = row.get('pants_length', '')
+                product.sleeve_length = row.get('sleeve_length', '')
+                product.fashion_elements = row.get('fashion_elements', '')
+                product.craft = row.get('craft', '')
+                product.launch_season = row.get('launch_season', '')
+                product.main_material = row.get('main_material', '')
+                product.color = row.get('color', '')
+                product.size = row.get('size', '')
+                size_img = parse_list_field(row.get('size_img', ''))
+                good_img = parse_list_field(row.get('good_img', ''))
+                product.size_img = json.dumps(size_img, ensure_ascii=False)
+                product.good_img = json.dumps(good_img, ensure_ascii=False)
+                product.factory_name = row.get('factory_name', '')
+                
+                # 设置图片URL（使用第一张商品图片作为主图）
+                if good_img and len(good_img) > 0:
+                    product.image_url = good_img[0]
+                
+                # 保存到数据库
+                db.session.add(product)
+                db.session.commit()
+                
+                # 如果有图片URL，且配置了向量搜索，则添加到向量索引
+                if product.image_url and 'PRODUCT_INDEX' in current_app.config:
+                    try:
+                        # 下载图片到临时文件
+                        response = requests.get(product.image_url)
+                        if response.status_code == 200:
+                            temp_dir = Path(current_app.config['UPLOAD_FOLDER']) / 'temp'
+                            temp_dir.mkdir(exist_ok=True)
+                            
+                            # 从URL中提取文件名
+                            filename = os.path.basename(product.image_url.split('?')[0])
+                            temp_path = temp_dir / filename
+                            
+                            # 保存临时文件
+                            with open(temp_path, 'wb') as f:
+                                f.write(response.content)
+                            
+                            # 创建ProductInfo对象
+                            product_info = ProductInfo(
+                                id=product.id,
+                                name=product.name,
+                                attributes={},  # 可以根据需要添加属性
+                                price=float(product.price),
+                                description=product.description or ''
+                            )
+                            
+                            # 添加到向量索引
+                            product_index = current_app.config['PRODUCT_INDEX']
+                            product_index.add_product(product_info, str(temp_path))
+                            
+                            # 清理临时文件
+                            os.remove(temp_path)
+                            
+                            current_app.logger.info(f"已将产品 {product.id} 添加到向量索引")
+                    except Exception as e:
+                        current_app.logger.error(f"添加产品到向量索引时出错: {e}")
+                
+                stats['success'] += 1
+            except Exception as e:
+                stats['failed'] += 1
+                stats['errors'].append({
+                    'row': stats['total'],
+                    'error': str(e)
+                })
+                db.session.rollback()
+        
+        # 如果配置了向量索引，保存更新后的索引
+        if 'PRODUCT_INDEX' in current_app.config and 'INDEX_PATH' in current_app.config:
+            try:
+                product_index = current_app.config['PRODUCT_INDEX']
+                product_index.save_index(current_app.config['INDEX_PATH'])
+                current_app.logger.info(f"已保存更新后的向量索引: {current_app.config['INDEX_PATH']}")
+            except Exception as e:
+                current_app.logger.error(f"保存向量索引时出错: {e}")
+        
+        return jsonify({
+            'message': 'CSV文件导入完成',
+            'stats': stats
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# 生成唯一的产品ID
+def generate_product_id(name, factory_name):
+    combined = f"{name}_{factory_name}_{time.time()}"
+    return hashlib.md5(combined.encode()).hexdigest()[:16]
+
+# 解析列表字段（如图片URL列表）
+def parse_list_field(field):
+    try:
+        if isinstance(field, str):
+            # 尝试解析JSON字符串
+            return json.loads(field)
+        elif isinstance(field, list):
+            return field
+        else:
+            return []
+    except json.JSONDecodeError:
+        # 尝试使用ast.literal_eval解析
+        try:
+            return ast.literal_eval(field)
+        except (SyntaxError, ValueError):
+            return []

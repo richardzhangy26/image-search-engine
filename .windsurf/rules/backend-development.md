@@ -1,0 +1,51 @@
+---
+trigger: manual
+description:
+globs:
+---
+# Backend Development Guide
+
+## Project Structure
+- Main application: [backend/app.py](mdc:backend/app.py)
+- Database models: [backend/models/](mdc:backend/models/)
+- API blueprints: [backend/blueprints/](mdc:backend/blueprints/)
+- Database migrations: [backend/migrate_db.py](mdc:backend/migrate_db.py)
+
+## Database
+- Schema definition: [backend/create_tables.sql](mdc:backend/create_tables.sql)
+- Initial setup: [backend/setup_database.sql](mdc:backend/setup_database.sql)
+
+## Development Workflow
+1. Set up virtual environment:
+   ```bash
+   cd backend
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Initialize database:
+   ```bash
+   python migrate_db.py
+   ```
+
+4. Run development server:
+   ```bash
+   python app.py
+   ```
+
+## Key Components
+- Product search implementation: [backend/product_search.py](mdc:backend/product_search.py)
+- View indexing: [backend/view_index.py](mdc:backend/view_index.py)
+
+## Docker Deployment
+- Docker configuration: [backend/Dockerfile](mdc:backend/Dockerfile)
+- Docker compose: [docker-compose.yml](mdc:docker-compose.yml)
+
+## Testing
+- Test directory: [backend/test/](mdc:backend/test/)
+- Example implementation: [backend/example.py](mdc:backend/example.py)

@@ -1,28 +1,53 @@
 version: '3.8'
 
 services:
+  db:
+    image: mysql:8.0
+    container_name: fashion-crm-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD}
+      - MYSQL_DATABASE=${DB_NAME}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql:/docker-entrypoint-initdb.d
+    restart: always
+
   backend:
     build: ./backend
-    container_name: image-search-backend
-    volumes:
-      - ./backend:/app
-      - /app/node_modules
+    image: richardzhangy26/fashion-crm-backend:latest
+    container_name: fashion-crm-backend
     environment:
-      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-sk-eac6e2b665264df8b4a73bd18b79bbeb}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_NAME=${DB_NAME}
+      - DB_USER=root
+      - DB_PASSWORD=${DB_PASSWORD}
+      - OSS_ACCESS_KEY_ID=${OSS_ACCESS_KEY_ID}
+      - OSS_ACCESS_KEY_SECRET=${OSS_ACCESS_KEY_SECRET}
+      - OSS_ENDPOINT=${OSS_ENDPOINT}
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME}
     ports:
       - "5000:5000"
-    restart: unless-stopped
+    depends_on:
+      - db
+    restart: always
 
   frontend:
     build: ./frontend
-    container_name: image-search-frontend
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+    image: richardzhangy26/fashion-crm-frontend:latest
+    container_name: fashion-crm-frontend
     ports:
-      - "5173:5173"
+      - "80:80"
     environment:
-      - VITE_API_BASE_URL=http://localhost:5000
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL}
     depends_on:
       - backend
-    restart: unless-stopped
+    restart: always
+
+volumes:
+  mysql_data:

@@ -24,7 +24,7 @@ def add_product():
     """添加新商品"""
     if 'image' not in request.files:
         return jsonify({'error': '没有上传图片'}), 400
-    
+ 
     file = request.files['image']
     if file.filename == '':
         return jsonify({'error': '没有选择图片'}), 400
@@ -106,9 +106,10 @@ def search_products():
     except Exception as e:
         return jsonify({'error': f'搜索失败: {str(e)}'}), 500
 
-@product_search_bp.route('/api/products/batch', methods=['POST'])
+@product_search_bp.route('/api/products/csv', methods=['POST'])
 def add_products_from_csv():
     """从CSV文件批量添加商品"""
+    import pdb;pdb.set_trace()
     if 'csv_file' not in request.files:
         return jsonify({'error': '没有上传CSV文件'}), 400
     

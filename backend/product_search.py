@@ -14,7 +14,7 @@ import io
 import time
 import random
 from pathlib import Path
-
+from models import ProductImage,Product
 load_dotenv()
 
 # 设置DashScope API密钥
@@ -26,9 +26,9 @@ if not dashscope.api_key:
 DB_CONFIG = {
     'host': os.getenv('DB_HOST', 'localhost'),
     'port': int(os.getenv('DB_PORT', 3306)),
-    'user': os.getenv('DB_USER', 'image_search_user'),
+    'user': os.getenv('DB_USER', 'root'),
     'password': os.getenv('DB_PASSWORD', 'zhang7481592630'),
-    'database': os.getenv('DB_NAME', 'image_search_db'),
+    'database': os.getenv('DB_NAME', 'product_crm'),
     'charset': 'utf8mb4'
 }
 
@@ -114,7 +114,7 @@ class VectorProductIndex:
         """使用DashScope API提取图片特征向量"""
         # 添加延迟以避免触发API速率限制
         # 使用随机延迟，在1-3秒之间，避免固定间隔可能导致的问题
-        delay = 1 + random.random() * 2
+        delay = 0.1 + random.random() * 0.5
         print(f"API调用前等待 {delay:.2f} 秒以避免速率限制...")
         time.sleep(delay)
         
