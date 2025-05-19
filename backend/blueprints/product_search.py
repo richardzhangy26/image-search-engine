@@ -109,7 +109,6 @@ def search_products():
 @product_search_bp.route('/api/products/csv', methods=['POST'])
 def add_products_from_csv():
     """从CSV文件批量添加商品"""
-    import pdb;pdb.set_trace()
     if 'csv_file' not in request.files:
         return jsonify({'error': '没有上传CSV文件'}), 400
     

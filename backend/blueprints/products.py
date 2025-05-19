@@ -95,7 +95,6 @@ def add_product():
         
         # 更新产品信息
         db.session.commit()
-        import pdb;pdb.set_trace()
         # 如果配置了向量搜索
         if current_app.config.get('PRODUCT_INDEX'):
             try:
@@ -216,7 +215,6 @@ def delete_product(product_id):
     try:
         # 查找产品
         product = Product.query.filter_by(id=product_id).first()
-        import pdb; pdb.set_trace()
         if not product:
             return jsonify({'error': '产品不存在'}), 404
         
@@ -236,7 +234,6 @@ def search_products():
         # 检查是否配置了向量搜索
         if 'PRODUCT_INDEX' not in current_app.config:
             return jsonify({'error': '向量搜索未配置'}), 500
-        import pdb;pdb.set_trace() 
         product_index = current_app.config['PRODUCT_INDEX']
         
         # 处理图片上传
@@ -384,7 +381,6 @@ def upload_product_image():
 @cross_origin()
 def delete_product_image(product_id, image_filename):
     try:
-        import pdb;pdb.set_trace()
         # 查找产品
         product = Product.query.get_or_404(product_id)
         
@@ -440,16 +436,21 @@ def delete_product_image(product_id, image_filename):
 def upload_csv():
     try:
         # 检查是否有文件
-        if 'file' not in request.files:
+        if 'csv_file' not in request.files:
             return jsonify({'error': '没有文件'}), 400
         
-        file = request.files['file']
-        
+        file = request.files['csv_file']
         if file.filename == '':
             return jsonify({'error': '没有选择文件'}), 400
+        if not file.filename.endswith('.csv'):
+            return jsonify({'error': '文件必须是CSV格式'}), 400
         
+        if 'images_folder' not in request.files:
+            return jsonify({'error': '没有图片文件夹'}), 400
+        
+        images_folder  = request.files['images_folder']
+
         # 读取CSV文件
-        import pdb;pdb.set_trace()
         csv_content = file.read().decode('utf-8')
         csv_file = io.StringIO(csv_content)
         csv_reader = csv.DictReader(csv_file)
@@ -470,7 +471,12 @@ def upload_csv():
                 # 生成产品ID
                 product_id = generate_product_id(row.get('name', ''), row.get('factory_name', ''))
                 
-                # 解析列表字段
+                # 保存图片文件
+                for image in images_folder:
+                    if image and allowed_file(image.filename):
+                        filename = secure_filename(image.filename)
+                        image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+                        image.save(image_path)
                 
                 # 创建产品对象
                 product = Product()
