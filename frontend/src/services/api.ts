@@ -1,5 +1,5 @@
 // API基础URL
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 export interface ProductInfo {
   id?: string;
   name: string;
@@ -174,7 +174,7 @@ export const uploadProductCSV = async (
   formData.append('csv_file', csvFile);
   formData.append('images_folder', imagesFolder);
 
-  const response = await fetch(`${API_BASE_URL}/products/csv`, {
+  const response = await fetch(`${API_BASE_URL}/api/products/upload_csv`, {
     method: 'POST',
     body: formData,
   });
@@ -282,7 +282,6 @@ export const deleteProductImage = async (productId: string, filename: string) =>
   
   const response = await fetch(`${API_BASE_URL}/api/products/images/${productId}/${cleanFilename}`, {
     method: 'DELETE',
-    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
     },

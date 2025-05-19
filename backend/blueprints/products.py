@@ -380,7 +380,7 @@ def upload_product_image():
         return jsonify({'error': str(e)}), 500
 
 # 删除产品图片
-@products_bp.route('/images/<product_id>/<image_filename>', methods=['DELETE'])
+@products_bp.route('/images/<product_id>/<path:image_filename>', methods=['DELETE', 'OPTIONS'])
 @cross_origin()
 def delete_product_image(product_id, image_filename):
     try:
@@ -388,8 +388,9 @@ def delete_product_image(product_id, image_filename):
         # 查找产品
         product = Product.query.get_or_404(product_id)
         
-        # 构建图片路径
-        image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', image_filename)
+        # 从URL中提取实际的文件路径
+        relative_path = image_filename.replace('uploads/', '')
+        image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], relative_path)
         
         # 检查文件是否存在
         if not os.path.exists(image_path):
@@ -397,6 +398,7 @@ def delete_product_image(product_id, image_filename):
             
         # 删除物理文件
         os.remove(image_path)
+        
         # 更新商品图片列表
         if product.good_img:
             try:
@@ -428,6 +430,7 @@ def delete_product_image(product_id, image_filename):
             'size_images': json.loads(product.size_img) if product.size_img else []
         })
     except Exception as e:
+        current_app.logger.error(f"删除图片时出错: {str(e)}")
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
@@ -446,6 +449,7 @@ def upload_csv():
             return jsonify({'error': '没有选择文件'}), 400
         
         # 读取CSV文件
+        import pdb;pdb.set_trace()
         csv_content = file.read().decode('utf-8')
         csv_file = io.StringIO(csv_content)
         csv_reader = csv.DictReader(csv_file)

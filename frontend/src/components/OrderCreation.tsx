@@ -204,7 +204,6 @@ const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreate }) => {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        credentials: 'include',
         body: JSON.stringify(orderData),
       });
 
