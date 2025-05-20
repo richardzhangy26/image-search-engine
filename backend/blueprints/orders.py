@@ -177,7 +177,7 @@ def get_order(order_id):
 def update_order_status(order_id):
     """更新订单状态"""
     try:
-        import pdb;pdb.set_trace()
+
         order = Order.query.get_or_404(order_id)
         data = request.get_json()
         
@@ -207,7 +207,6 @@ def delete_order(order_id):
     """删除订单"""
     try:
         # 删除订单
-        import pdb;pdb.set_trace()
         order = Order.query.filter_by(id=order_id).first()
         if not order:
             return jsonify({'error': '订单不存在'}), 404
@@ -236,7 +235,6 @@ def import_orders():
     try:
         df = pd.read_excel(file)
         required_columns = ['订单编号', '快递公司', '运单号', '我打备注']
-        import pdb;pdb.set_trace()
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
             return jsonify({

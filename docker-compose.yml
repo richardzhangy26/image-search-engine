@@ -33,6 +33,9 @@ services:
       - OSS_BUCKET_NAME=${OSS_BUCKET_NAME}
     ports:
       - "5000:5000"
+    volumes:
+      - upload_data:/app/uploads
+      - vector_data:/app/data
     depends_on:
       - db
     restart: always
@@ -51,3 +54,5 @@ services:
 
 volumes:
   mysql_data:
+  upload_data:
+  vector_data:
