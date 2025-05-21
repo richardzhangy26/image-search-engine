@@ -185,7 +185,7 @@ def update_order_status(order_id):
             return jsonify({'error': '缺少状态字段'}), 400
             
         new_status = data['status']
-        allowed_statuses = ['unpaid', 'paid', 'unpurchased', 'purchased', 'unshipped', 'shipped']
+        allowed_statuses = ['unpaid', 'paid', 'unpurchased', 'purchased', 'unshipped', 'shipped', 'returned', 'exchanged']
         
         if new_status not in allowed_statuses:
             return jsonify({'error': f'无效的状态值。必须是: {", ".join(allowed_statuses)}'}), 400

@@ -17,7 +17,7 @@ interface Order {
     size?: string;
   }[];
   total_amount: number;
-  status: 'unpaid' | 'paid' | 'unpurchased' | 'purchased' | 'unshipped' | 'shipped';
+  status: 'unpaid' | 'paid' | 'unpurchased' | 'purchased' | 'unshipped' | 'shipped' | 'returned' | 'exchanged';
   created_at: string;
   updated_at: string;
   shipping_address?: string;
@@ -38,6 +38,30 @@ interface ProductInfo {
 }
 
 import { API_BASE_URL } from '../services/api';
+
+// 辅助函数：根据状态获取颜色类名
+const getStatusClassName = (status: Order['status']) => {
+  switch (status) {
+    case 'unpaid':
+      return 'bg-red-100 text-red-800';
+    case 'paid':
+      return 'bg-green-100 text-green-800';
+    case 'unpurchased':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'purchased':
+      return 'bg-blue-100 text-blue-800';
+    case 'unshipped':
+      return 'bg-purple-100 text-purple-800';
+    case 'shipped':
+      return 'bg-indigo-100 text-indigo-800';
+    case 'returned':
+      return 'bg-orange-100 text-orange-800'; // 新增退货颜色
+    case 'exchanged':
+      return 'bg-teal-100 text-teal-800';    // 新增换货颜色
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+};
 
 export const OrderManagement: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -349,16 +373,17 @@ export const OrderManagement: React.FC = () => {
         { text: '已采购', value: 'purchased' },
         { text: '未发货', value: 'unshipped' },
         { text: '已发货', value: 'shipped' },
+        { text: '退货', value: 'returned' },
+        { text: '换货', value: 'exchanged' },
       ],
       filteredValue: statusFilter ? [statusFilter] : null,
       onFilter: (value: string, record: Order) => {
-        // 直接返回过滤结果，不触发 API 请求
         return record.status === value;
       },
       render: (text: Order['status'], record: Order) => (
         <select
           value={text}
-          onChange={(e) => handleStatusChange(record.id, e.target.value)}
+          onChange={(e) => handleStatusChange(parseInt(record.id), e.target.value)}
           className={`px-2 py-1 text-sm rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 ${
             text === 'unpaid'
               ? 'bg-red-100 text-red-800'
@@ -370,7 +395,13 @@ export const OrderManagement: React.FC = () => {
               ? 'bg-blue-100 text-blue-800'
               : text === 'unshipped'
               ? 'bg-purple-100 text-purple-800'
-              : 'bg-indigo-100 text-indigo-800'
+              : text === 'shipped'
+              ? 'bg-indigo-100 text-indigo-800'
+              : text === 'returned'
+              ? 'bg-orange-100 text-orange-800'
+              : text === 'exchanged'
+              ? 'bg-teal-100 text-teal-800'
+              : 'bg-gray-100 text-gray-800'
           }`}
         >
           <option value="unpaid">未付款</option>
@@ -379,6 +410,8 @@ export const OrderManagement: React.FC = () => {
           <option value="purchased">已采购</option>
           <option value="unshipped">未发货</option>
           <option value="shipped">已发货</option>
+          <option value="returned">退货</option>
+          <option value="exchanged">换货</option>
         </select>
       ),
     },
@@ -427,7 +460,6 @@ export const OrderManagement: React.FC = () => {
   // 生成订单文本
   const generateOrderText = (order: Order) => {
     const lines = [
-      'TXT格式',
       `订单编号：${order.id}`,
       `收件人姓名：${order.customer_name}`,
       `联系方式：${order.customer_phone || ''}`,
@@ -452,7 +484,9 @@ export const OrderManagement: React.FC = () => {
                    order.status === 'unshipped' ? '未发货' :
                    order.status === 'purchased' ? '已采购' :
                    order.status === 'unpurchased' ? '未采购' :
-                   order.status === 'paid' ? '已付款' : '未付款'}`
+                   order.status === 'paid' ? '已付款' :
+                   order.status === 'returned' ? '退货' :
+                   order.status === 'exchanged' ? '换货' : '未付款'}`,
     );
 
     // 如果有快递信息，添加快递单号
