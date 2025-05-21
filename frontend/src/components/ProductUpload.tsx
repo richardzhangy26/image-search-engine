@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, InputNumber, message, Popconfirm, Upload } from 'antd';
+import { Table, Button, Modal, Form, Input, InputNumber, message, Popconfirm, Upload, Image, Select } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, SearchOutlined } from '@ant-design/icons';
 import { uploadProductCSV, ProductInfo, getProducts, addProduct, updateProduct, deleteProduct, deleteProductImage, API_BASE_URL } from '../services/api';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
@@ -295,20 +295,63 @@ export const ProductUpload: React.FC = () => {
       dataIndex: 'good_img',
       key: 'good_img',
       render: (good_img: string | string[]) => {
-        try {
-          const images = Array.isArray(good_img) ? good_img : (good_img ? JSON.parse(good_img) : []);
-          return images.length > 0 ? (
-            <img
-              src={`${API_BASE_URL}${images[0]}`}
-              alt="商品图片"
-              style={{ width: '50px', height: '50px', objectFit: 'cover' }}
-            />
-          ) : null;
-        } catch (e) {
-          console.error('解析商品图片失败:', e);
-          return null;
-        }
+        if (!good_img) return <span>无图片</span>;
+        
+        const images = Array.isArray(good_img) ? good_img : JSON.parse(good_img as string);
+        if (!images || images.length === 0) return <span>无图片</span>;
+        
+        const firstImage = images[0];
+        return (
+          <Image
+            src={`${API_BASE_URL}${firstImage}`}
+            alt="商品图片"
+            width={80}
+            height={80}
+            style={{ objectFit: 'cover' }}
+          />
+        );
       },
+    },
+    {
+      title: '销售状态',
+      dataIndex: 'sales_status',
+      key: 'sales_status',
+      filters: [
+        { text: '在售', value: 'on_sale' },
+        { text: '售罄', value: 'sold_out' },
+        { text: '预售', value: 'pre_sale' },
+      ],
+      onFilter: (value: string, record: ProductInfo) => record.sales_status === value,
+      render: (text: string, record: ProductInfo) => (
+        <Select
+          defaultValue={text || 'on_sale'}
+          style={{ width: 100 }}
+          onChange={async (value) => {
+            try {
+              const formData = new FormData();
+              const productData = { ...record, sales_status: value };
+              formData.append('product', JSON.stringify(productData));
+              
+              await updateProduct(record.id as string, formData);
+              message.success('销售状态更新成功');
+              fetchProducts(); // 刷新产品列表
+            } catch (error) {
+              message.error('更新销售状态失败');
+              console.error(error);
+            }
+          }}
+        >
+          <Select.Option value="on_sale">
+            <span style={{ color: '#52c41a' }}>在售</span>
+          </Select.Option>
+          <Select.Option value="sold_out">
+            <span style={{ color: '#f5222d' }}>售罄</span>
+          </Select.Option>
+          <Select.Option value="pre_sale">
+            <span style={{ color: '#1890ff' }}>预售</span>
+          </Select.Option>
+        </Select>
+      ),
     },
     {
       title: '成本价',
@@ -455,6 +498,13 @@ export const ProductUpload: React.FC = () => {
             </Form.Item>
             <Form.Item name="factory_name" label="工厂名称">
               <Input />
+            </Form.Item>
+            <Form.Item name="sales_status" label="销售状态" initialValue="on_sale">
+              <Select>
+                <Select.Option value="on_sale">在售</Select.Option>
+                <Select.Option value="sold_out">售罄</Select.Option>
+                <Select.Option value="pre_sale">预售</Select.Option>
+              </Select>
             </Form.Item>
           </div>
           <Form.Item name="description" label="描述">

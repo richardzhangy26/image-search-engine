@@ -10,18 +10,19 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 load_dotenv()
-client = OpenAI(api_key=os.getenv('DEEPSEEK_API_KEY'), base_url="https://api.deepseek.com")
-
-response = client.chat.completions.create(
-    model="deepseek-chat",
-    messages=[
-        {"role": "system", "content": "You are a helpful assistant"},
-        {"role": "user", "content": "Hello"},
-    ],
-    stream=False
-)
-
-print(response.choices[0].message.content)
+# 移除直接执行的 API 调用代码
+# client = OpenAI(api_key=os.getenv('DEEPSEEK_API_KEY'), base_url="https://api.deepseek.com")
+# 
+# response = client.chat.completions.create(
+#     model="deepseek-chat",
+#     messages=[
+#         {"role": "system", "content": "You are a helpful assistant"},
+#         {"role": "user", "content": "Hello"},
+#     ],
+#     stream=False
+# )
+# 
+# print(response.choices[0].message.content)
 customers_bp = Blueprint('customers', __name__, url_prefix='/api/customers')
 
 def parse_address(text):

@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS products (
     image_url VARCHAR(255) COMMENT '主图URL',
     image_path VARCHAR(255) COMMENT '本地图片路径',
     oss_path VARCHAR(255) COMMENT 'OSS路径',
+    sales_status VARCHAR(20) NOT NULL DEFAULT 'on_sale' COMMENT '销售状态：sold_out-售罄, on_sale-在售, pre_sale-预售',
     
     -- 时间戳
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

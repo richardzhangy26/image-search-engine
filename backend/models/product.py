@@ -35,6 +35,9 @@ class Product(db.Model):
     image_path = db.Column(db.String(255), nullable=True)  # 本地图片路径
     oss_path = db.Column(db.String(255), nullable=True)  # OSS路径
     
+    # 销售状态
+    sales_status = db.Column(db.String(20), nullable=False, default='on_sale')  # 销售状态：sold_out-售罄, on_sale-在售, pre_sale-预售
+    
     # 时间戳
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
@@ -85,6 +88,7 @@ class Product(db.Model):
             'image_url': self.image_url,
             'image_path': self.image_path,
             'oss_path': self.oss_path,
+            'sales_status': self.sales_status,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

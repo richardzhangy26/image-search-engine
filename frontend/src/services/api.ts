@@ -22,6 +22,7 @@ export interface ProductInfo {
   size_img?: string;      // 尺码图片URL
   good_img?: string;      // 商品图片URL
   factory_name?: string;  // 工厂名称
+  sales_status?: string;  // 销售状态：sold_out-售罄, on_sale-在售, pre_sale-预售
 }
 
 export interface SearchResult extends ProductInfo {

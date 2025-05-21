@@ -14,6 +14,8 @@ import hashlib
 import uuid
 import ast
 from flask_cors import cross_origin
+import shutil
+
 products_bp = Blueprint('products', __name__, url_prefix='/api/products')
 
 # Helper function (consider moving to a utils file)
@@ -445,10 +447,13 @@ def upload_csv():
         if not file.filename.endswith('.csv'):
             return jsonify({'error': '文件必须是CSV格式'}), 400
         
-        if 'images_folder' not in request.files:
-            return jsonify({'error': '没有图片文件夹'}), 400
+        # 获取图片文件夹路径
+        images_folder = request.form.get('images_folder')
+        if not images_folder:
+            return jsonify({'error': '没有提供图片文件夹路径'}), 400
         
-        images_folder  = request.files['images_folder']
+        if not os.path.exists(images_folder):
+            return jsonify({'error': '图片文件夹路径不存在'}), 400
 
         # 读取CSV文件
         csv_content = file.read().decode('utf-8')
@@ -468,110 +473,121 @@ def upload_csv():
             stats['total'] += 1
             
             try:
-                # 生成产品ID
-                product_id = generate_product_id(row.get('name', ''), row.get('factory_name', ''))
-                
-                # 保存图片文件
-                for image in images_folder:
-                    if image and allowed_file(image.filename):
-                        filename = secure_filename(image.filename)
-                        image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
-                        image.save(image_path)
-                
                 # 创建产品对象
-                product = Product()
-                product.product_id = product_id
-                product.name = row.get('name', '')
-                product.description = row.get('description', '')
-                product.price = float(row.get('price', 0))
-                product.sale_price = float(row.get('sale_price', 0))
-                product.product_code = row.get('product_code', '')
-                product.pattern = row.get('pattern', '')
-                product.skirt_length = row.get('skirt_length', '')
-                product.clothing_length = row.get('clothing_length', '')
-                product.style = row.get('style', '')
-                product.pants_length = row.get('pants_length', '')
-                product.sleeve_length = row.get('sleeve_length', '')
-                product.fashion_elements = row.get('fashion_elements', '')
-                product.craft = row.get('craft', '')
-                product.launch_season = row.get('launch_season', '')
-                product.main_material = row.get('main_material', '')
-                product.color = row.get('color', '')
-                product.size = row.get('size', '')
-                size_img = parse_list_field(row.get('size_img', ''))
-                good_img = parse_list_field(row.get('good_img', ''))
-                product.size_img = json.dumps(size_img, ensure_ascii=False)
-                product.good_img = json.dumps(good_img, ensure_ascii=False)
-                product.factory_name = row.get('factory_name', '')
+                product_data = {}
+                for key, value in row.items():
+                    if key in ['name', 'description', 'price', 'sale_price', 'product_code', 
+                              'pattern', 'skirt_length', 'clothing_length', 'style', 
+                              'pants_length', 'sleeve_length', 'fashion_elements', 'craft', 
+                              'launch_season', 'main_material', 'color', 'size', 'factory_name']:
+                        if key in ['price', 'sale_price'] and value:
+                            product_data[key] = float(value)
+                        else:
+                            product_data[key] = value
                 
-                # 设置图片URL（使用第一张商品图片作为主图）
-                if good_img and len(good_img) > 0:
-                    product.image_url = good_img[0]
+                # 处理特殊字段
+                if '货号' in row:
+                    product_data['product_code'] = row['货号']
+                if '图案' in row:
+                    product_data['pattern'] = row['图案']
+                if '裙长' in row:
+                    product_data['skirt_length'] = row['裙长']
+                if '衣长' in row:
+                    product_data['clothing_length'] = row['衣长']
+                if '风格' in row:
+                    product_data['style'] = row['风格']
+                if '裤长' in row:
+                    product_data['pants_length'] = row['裤长']
+                if '袖长' in row:
+                    product_data['sleeve_length'] = row['袖长']
+                if '流行元素' in row:
+                    product_data['fashion_elements'] = row['流行元素']
+                if '工艺' in row:
+                    product_data['craft'] = row['工艺']
+                if '上市年份/季节' in row:
+                    product_data['launch_season'] = row['上市年份/季节']
+                if '主面料成分' in row:
+                    product_data['main_material'] = row['主面料成分']
+                if '颜色' in row:
+                    product_data['color'] = row['颜色']
+                if '尺码' in row:
+                    product_data['size'] = row['尺码']
                 
-                # 保存到数据库
+                # 处理size_img和good_img字段
+                if 'size_img' in row:
+                    product_data['size_img'] = parse_list_field(row['size_img'])
+                if 'good_img' in row:
+                    product_data['good_img'] = parse_list_field(row['good_img'])
+                
+                # 创建产品对象并保存到数据库
+                product = Product.from_dict(product_data)
                 db.session.add(product)
                 db.session.commit()
                 
-                # 如果有图片URL，且配置了向量搜索，则添加到向量索引
-                if product.image_url and 'PRODUCT_INDEX' in current_app.config:
+                # 获取产品ID
+                product_id = product.id
+                
+                # 处理图片文件夹中的图片
+                good_img_urls = []
+                product_name = product_data.get('name', '')
+                
+                # 遍历图片文件夹中的文件
+                for filename in os.listdir(images_folder):
+                    if allowed_file(filename):
+                        # 生成唯一文件名
+                        unique_filename = f"{uuid.uuid4()}_{filename}"
+                        # 创建按产品ID组织的目录
+                        product_good_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', str(product_id))
+                        os.makedirs(product_good_dir, exist_ok=True)
+                        # 源文件路径
+                        image_path = os.path.join(images_folder, filename)
+                        # 目标文件路径
+                        dest_path = os.path.join(product_good_dir, unique_filename)
+                        # 复制文件
+                        shutil.copy2(image_path, dest_path)
+                        # 添加URL到列表
+                        good_img_urls.append(f"/uploads/good_images/{product_id}/{unique_filename}")
+                
+                # 更新产品的图片URL
+                if good_img_urls:
+                    product.good_img = json.dumps(good_img_urls)
+                    product.image_url = good_img_urls[0]  # 使用第一张图片作为主图
+                    db.session.commit()
+                
+                # 如果配置了向量搜索
+                if current_app.config.get('PRODUCT_INDEX') and good_img_urls:
                     try:
-                        # 下载图片到临时文件
-                        response = requests.get(product.image_url)
-                        if response.status_code == 200:
-                            temp_dir = Path(current_app.config['UPLOAD_FOLDER']) / 'temp'
-                            temp_dir.mkdir(exist_ok=True)
-                            
-                            # 从URL中提取文件名
-                            filename = os.path.basename(product.image_url.split('?')[0])
-                            temp_path = temp_dir / filename
-                            
-                            # 保存临时文件
-                            with open(temp_path, 'wb') as f:
-                                f.write(response.content)
-                            
-                            # 创建ProductInfo对象
-                            product_info = ProductInfo(
-                                id=product.id,
-                                name=product.name,
-                                attributes={},  # 可以根据需要添加属性
-                                price=float(product.price),
-                                description=product.description or ''
+                        # 添加到向量索引
+                        product_index = current_app.config['PRODUCT_INDEX']
+                        for good_img_url in good_img_urls:
+                            image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', str(product_id), os.path.basename(good_img_url.split('/')[-1]))
+                            # 创建产品信息对象
+                            feature = product_index.extract_feature(image_path)
+                            product_image = ProductImage(
+                                product_id=product_id,
+                                image_path=good_img_url,
+                                vector=feature
                             )
-                            
-                            # 添加到向量索引
-                            product_index = current_app.config['PRODUCT_INDEX']
-                            product_index.add_product(product_info, str(temp_path))
-                            
-                            # 清理临时文件
-                            os.remove(temp_path)
-                            
-                            current_app.logger.info(f"已将产品 {product.id} 添加到向量索引")
+                            db.session.add(product_image)
+                        db.session.commit()
+                        current_app.logger.info(f"已将产品 {product.id} 添加到向量索引")
                     except Exception as e:
                         current_app.logger.error(f"添加产品到向量索引时出错: {e}")
                 
                 stats['success'] += 1
             except Exception as e:
                 stats['failed'] += 1
-                stats['errors'].append({
-                    'row': stats['total'],
-                    'error': str(e)
-                })
+                error_msg = f"处理第 {stats['total']} 行时出错: {str(e)}"
+                stats['errors'].append(error_msg)
+                current_app.logger.error(error_msg)
                 db.session.rollback()
-        
-        # 如果配置了向量索引，保存更新后的索引
-        if 'PRODUCT_INDEX' in current_app.config and 'INDEX_PATH' in current_app.config:
-            try:
-                product_index = current_app.config['PRODUCT_INDEX']
-                product_index.save_index(current_app.config['INDEX_PATH'])
-                current_app.logger.info(f"已保存更新后的向量索引: {current_app.config['INDEX_PATH']}")
-            except Exception as e:
-                current_app.logger.error(f"保存向量索引时出错: {e}")
         
         return jsonify({
             'message': 'CSV文件导入完成',
             'stats': stats
         })
     except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 # 生成唯一的产品ID
