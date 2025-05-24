@@ -529,24 +529,32 @@ def upload_csv():
                 
                 # 处理图片文件夹中的图片
                 good_img_urls = []
-                product_name = product_data.get('name', '')
+                product_name = product_data.get('name', '') # 获取产品名称，用于匹配文件夹
                 
-                # 遍历图片文件夹中的文件
-                for filename in os.listdir(images_folder):
-                    if allowed_file(filename):
-                        # 生成唯一文件名
-                        unique_filename = f"{uuid.uuid4()}_{filename}"
-                        # 创建按产品ID组织的目录
-                        product_good_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', str(product_id))
-                        os.makedirs(product_good_dir, exist_ok=True)
-                        # 源文件路径
-                        image_path = os.path.join(images_folder, filename)
-                        # 目标文件路径
-                        dest_path = os.path.join(product_good_dir, unique_filename)
-                        # 复制文件
-                        shutil.copy2(image_path, dest_path)
-                        # 添加URL到列表
-                        good_img_urls.append(f"/uploads/good_images/{product_id}/{unique_filename}")
+                if product_name: # 确保产品名称存在
+                    product_specific_images_folder = os.path.join(images_folder, product_name)
+                    
+                    if os.path.isdir(product_specific_images_folder):
+                        # 遍历特定产品图片文件夹中的文件
+                        for filename in os.listdir(product_specific_images_folder):
+                            if allowed_file(filename):
+                                # 生成唯一文件名
+                                unique_filename = f"{uuid.uuid4()}_{filename}"
+                                # 创建按产品ID组织的目录
+                                product_good_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', str(product_id))
+                                os.makedirs(product_good_dir, exist_ok=True)
+                                # 源文件路径
+                                image_path = os.path.join(product_specific_images_folder, filename)
+                                # 目标文件路径
+                                dest_path = os.path.join(product_good_dir, unique_filename)
+                                # 复制文件
+                                shutil.copy2(image_path, dest_path)
+                                # 添加URL到列表
+                                good_img_urls.append(f"/uploads/good_images/{product_id}/{unique_filename}")
+                    else:
+                        current_app.logger.warning(f"产品 '{product_name}' 对应的图片文件夹 '{product_specific_images_folder}' 不存在或不是一个目录")
+                else:
+                    current_app.logger.warning(f"CSV 行中产品名称为空，无法处理图片")
                 
                 # 更新产品的图片URL
                 if good_img_urls:
