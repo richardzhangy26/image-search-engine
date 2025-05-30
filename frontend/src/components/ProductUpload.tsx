@@ -105,7 +105,6 @@ export const ProductUpload: React.FC = () => {
       form.setFieldsValue({
         ...product,
         good_img: goodImgList,
-        launch_season: product.launch_season ? moment(product.launch_season, 'YYYY/MM') : null,
       });
     } else {
       // 添加模式，清空所有字段，尤其是图片
