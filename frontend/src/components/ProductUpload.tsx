@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Table, Button, Modal, Form, Input, InputNumber, message, Popconfirm, Upload, Image, Select } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, SearchOutlined } from '@ant-design/icons';
-import { uploadProductCSV, ProductInfo, getProducts, addProduct, updateProduct, deleteProduct, deleteProductImage, API_BASE_URL } from '../services/api';
+import { uploadProductCSV, ProductInfo, getProducts, addProduct, updateProduct, deleteProduct, deleteProductImage, API_BASE_URL, buildVectorIndex, batchDeleteProductsAPI } from '../services/api';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 
 export const ProductUpload: React.FC = () => {
@@ -13,9 +13,12 @@ export const ProductUpload: React.FC = () => {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [imagesFolder, setImagesFolder] = useState<string>('');
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
+  const [indexingLoading, setIndexingLoading] = useState(false);
   const [searchName, setSearchName] = useState('');
   const [searchId, setSearchId] = useState('');
   const [filteredInfo, setFilteredInfo] = useState<Record<string, string[] | null>>({});
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]); // 新增: 用于存储选中的行
+  const [batchDeleteLoading, setBatchDeleteLoading] = useState(false); // 新增: 批量删除按钮加载状态
 
   useEffect(() => {
     fetchProducts();
@@ -40,21 +43,9 @@ export const ProductUpload: React.FC = () => {
         const formData = new FormData();
 
         // good_img 处理
-        const goodImgFiles = (values.good_img || []).map((file: UploadFile) => {
-          if (file.originFileObj) {
-            return file.originFileObj; // 新上传
-          }
-          if (file.response) {
-            return file.response; // 已有图片的路径
-          }
-          return null;
-        }).filter(Boolean);
-
-        // size_img 同理处理
-        const sizeImgFiles = values.size_img?.map((file: UploadFile) => file.originFileObj) || [];
+        const goodImgFiles = values.good_img?.map((file: UploadFile) => file.originFileObj) || [];
         
-        // 删除values中的文件列表，因为我们会单独处理
-        const { size_img, good_img, ...productData } = values;
+        const { good_img, ...productData } = values;
         
         formData.append('product', JSON.stringify(productData));
         // 添加图片文件或路径
@@ -99,24 +90,12 @@ export const ProductUpload: React.FC = () => {
     if (product) {
       // 编辑模式，回填图片
       let goodImgList = [];
-      let sizeImgList = [];
       try {
         const imgs = Array.isArray(product.good_img)
           ? product.good_img
-          : (product.good_img ? JSON.parse(product.good_img) : []);
+          : (product.good_img ? JSON.parse(product.good_img as string) : []);
         goodImgList = imgs.map((url: string, idx: number) => ({
           uid: `good_img_${idx}`,
-          name: url.split('/').pop(),
-          status: 'done',
-          url: `${API_BASE_URL}${url}`,
-          response: url,
-        }));
-
-        const sizeImgs = Array.isArray(product.size_img)
-          ? product.size_img
-          : (product.size_img ? JSON.parse(product.size_img) : []);
-        sizeImgList = sizeImgs.map((url: string, idx: number) => ({
-          uid: `size_img_${idx}`,
           name: url.split('/').pop(),
           status: 'done',
           url: `${API_BASE_URL}${url}`,
@@ -126,14 +105,13 @@ export const ProductUpload: React.FC = () => {
       form.setFieldsValue({
         ...product,
         good_img: goodImgList,
-        size_img: sizeImgList,
+        launch_season: product.launch_season ? moment(product.launch_season, 'YYYY/MM') : null,
       });
     } else {
       // 添加模式，清空所有字段，尤其是图片
       form.resetFields();
       form.setFieldsValue({
         good_img: [],
-        size_img: [],
       });
     }
     setIsModalVisible(true);
@@ -147,16 +125,26 @@ export const ProductUpload: React.FC = () => {
 
     setLoading(true);
     try {
-      const result = await uploadProductCSV(csvFile, imagesFolder);
-      message.success(`批量添加商品成功！共添加 ${result.count} 个商品`);
-      setCsvFile(null);
-      setImagesFolder('');
+      await uploadProductCSV(csvFile, imagesFolder);
+      message.success('CSV文件上传成功');
       setUploadModalVisible(false);
       fetchProducts();
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '批量添加商品失败');
+      message.error(err instanceof Error ? err.message : '上传失败');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBuildVectorIndex = async () => {
+    setIndexingLoading(true);
+    try {
+      const result = await buildVectorIndex();
+      message.success(result.message || '向量索引构建成功');
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '向量索引构建失败');
+    } finally {
+      setIndexingLoading(false);
     }
   };
 
@@ -390,6 +378,39 @@ export const ProductUpload: React.FC = () => {
     },
   ];
 
+  // 新增: 行选择变化时的处理函数
+  const onSelectChange = (newSelectedRowKeys: React.Key[]) => {
+    console.log('selectedRowKeys changed: ', newSelectedRowKeys);
+    setSelectedRowKeys(newSelectedRowKeys);
+  };
+
+  // 新增: 批量删除处理函数
+  const handleBatchDelete = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请至少选择一项进行删除');
+      return;
+    }
+    setBatchDeleteLoading(true);
+    try {
+      // 调用新的API函数
+      const result = await batchDeleteProductsAPI(selectedRowKeys);
+      message.success(result.message || '批量删除成功');
+      fetchProducts(); // 刷新产品列表
+      setSelectedRowKeys([]); // 清空选择
+    } catch (error: any) {
+      console.error('Batch delete error:', error);
+      message.error(error.message || '批量删除失败，请检查网络或联系管理员');
+    }
+    setBatchDeleteLoading(false);
+  };
+
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: onSelectChange,
+  };
+
+  const hasSelected = selectedRowKeys.length > 0;
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-4">
@@ -397,27 +418,48 @@ export const ProductUpload: React.FC = () => {
         <div className="space-x-2">
           <Button
             type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => showModal()}
+            className="mr-2"
+          >
+            添加产品
+          </Button>
+          <Button
+            type="primary"
             icon={<UploadOutlined />}
             onClick={() => setUploadModalVisible(true)}
+            className="mr-2"
           >
             批量导入
           </Button>
           <Button
             type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => showModal()}
+            icon={<SearchOutlined />}
+            onClick={handleBuildVectorIndex}
+            loading={indexingLoading}
           >
-            添加产品
+            向量索引
           </Button>
+          <Button
+            type="dashed" // 或者使用 type="danger" 如果您希望更醒目
+            onClick={handleBatchDelete}
+            disabled={!hasSelected} // 如果没有选中项则禁用
+            loading={batchDeleteLoading} // 加载状态
+          >
+            批量删除
+          </Button>
+          <span style={{ marginLeft: 8 }}>
+            {hasSelected ? `已选择 ${selectedRowKeys.length} 项` : ''}
+          </span>
         </div>
       </div>
 
       <Table
         columns={columns}
-        dataSource={products}
         rowKey="id"
+        dataSource={products}
+        rowSelection={rowSelection} // 启用行选择
         loading={loading}
-        onChange={(_, filters) => setFilteredInfo(filters as Record<string, string[] | null>)}
         pagination={{
           total: products.length,
           pageSize: 10,
@@ -457,6 +499,22 @@ export const ProductUpload: React.FC = () => {
             >
               <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
             </Form.Item>
+            <Form.Item name="color" label="颜色">
+              <Input />
+            </Form.Item>
+            <Form.Item name="size" label="尺码">
+              <Input />
+            </Form.Item>
+            <Form.Item name="factory_name" label="工厂名称">
+              <Input />
+            </Form.Item>
+            <Form.Item name="sales_status" label="销售状态" initialValue="on_sale">
+              <Select>
+                <Select.Option value="on_sale">在售</Select.Option>
+                <Select.Option value="sold_out">售罄</Select.Option>
+                <Select.Option value="pre_sale">预售</Select.Option>
+              </Select>
+            </Form.Item>
             <Form.Item name="product_code" label="货号">
               <Input />
             </Form.Item>
@@ -490,59 +548,9 @@ export const ProductUpload: React.FC = () => {
             <Form.Item name="main_material" label="主面料成分">
               <Input />
             </Form.Item>
-            <Form.Item name="color" label="颜色">
-              <Input />
-            </Form.Item>
-            <Form.Item name="size" label="尺码">
-              <Input />
-            </Form.Item>
-            <Form.Item name="factory_name" label="工厂名称">
-              <Input />
-            </Form.Item>
-            <Form.Item name="sales_status" label="销售状态" initialValue="on_sale">
-              <Select>
-                <Select.Option value="on_sale">在售</Select.Option>
-                <Select.Option value="sold_out">售罄</Select.Option>
-                <Select.Option value="pre_sale">预售</Select.Option>
-              </Select>
-            </Form.Item>
           </div>
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={4} />
-          </Form.Item>
-          <Form.Item 
-            name="size_img" 
-            label="尺码图片" 
-            valuePropName="fileList"
-            getValueFromEvent={(e) => {
-              if (Array.isArray(e)) {
-                return e;
-              }
-              return e?.fileList;
-            }}
-          >
-            <Upload
-              listType="picture-card"
-              multiple={true}
-              beforeUpload={() => false}
-              accept="image/*"
-              onRemove={file => {
-                Modal.confirm({
-                  title: '确认删除',
-                  content: '确定要删除这张图片吗？删除后将无法恢复。',
-                  onOk: () => handleImageDelete(file, 'size_img'),
-                  okText: '确定',
-                  cancelText: '取消'
-                });
-                return false; // 阻止默认删除行为
-              }}
-              defaultFileList={form.getFieldValue('size_img')}
-            >
-              <div>
-                <PlusOutlined />
-                <div style={{ marginTop: 8 }}>上传尺码图片</div>
-              </div>
-            </Upload>
           </Form.Item>
           <Form.Item 
             name="good_img" 

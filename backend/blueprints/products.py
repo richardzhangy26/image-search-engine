@@ -216,17 +216,79 @@ def update_product(product_id):
 def delete_product(product_id):
     try:
         # 查找产品
-        product = Product.query.filter_by(id=product_id).first()
-        if not product:
-            return jsonify({'error': '产品不存在'}), 404
+        product = Product.query.get_or_404(product_id)
         
-        # 从数据库中删除
+        # 删除关联的图片文件（如果需要）
+        # 注意：如果 ProductImage 表中 product_id 外键设置了 ON DELETE CASCADE，
+        # 数据库会自动处理关联的 product_images 记录的删除。
+        # 如果图片存储在文件系统或OSS，且没有其他机制清理，可能需要在这里添加清理逻辑。
+        # 示例：清理本地文件 (假设 good_img 和 size_img 存储的是相对路径或可解析的路径)
+        # for img_url_json in [product.good_img, product.size_img]:
+        #     if img_url_json:
+        #         try:
+        #             img_urls = json.loads(img_url_json)
+        #             for img_url in img_urls:
+        #                 # 假设 img_url 是类似 /uploads/good_images/1/uuid_filename.jpg 的形式
+        #                 if img_url.startswith('/uploads/'):
+        #                     # 构建绝对路径
+        #                     file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], img_url.split('/', 2)[-1])
+        #                     if os.path.exists(file_path):
+        #                         os.remove(file_path)
+        #                         current_app.logger.info(f"Deleted file: {file_path}")
+        #         except Exception as e:
+        #             current_app.logger.error(f"Error deleting image files for product {product_id}: {e}")
+
         db.session.delete(product)
         db.session.commit()
-        return jsonify({'message': '产品删除成功'})
+        return jsonify({'message': '产品删除成功'}), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"删除产品 {product_id} 失败: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+# 批量删除产品
+@products_bp.route('/batch-delete', methods=['POST'])
+@cross_origin()
+def batch_delete_products():
+    data = request.get_json()
+    if not data or 'ids' not in data:
+        return jsonify({'error': '请求体中缺少产品ID列表 (ids)'}), 400
+
+    product_ids = data['ids']
+    if not isinstance(product_ids, list) or not all(isinstance(pid, int) for pid in product_ids):
+        return jsonify({'error': '产品ID列表 (ids) 必须是一个整数列表'}), 400
+
+    if not product_ids:
+        return jsonify({'message': '没有提供要删除的产品ID'}), 200 # 或者 400，取决于期望行为
+
+    try:
+        # ProductImage 表中 product_id 外键已设置 ON DELETE CASCADE，
+        # 数据库会自动删除关联的 product_images 记录。
+        # 如果图片文件也存储在本地且需要清理，需要额外逻辑，但对于批量操作，
+        # 依赖数据库级联删除通常更高效。
+        
+        num_deleted = Product.query.filter(Product.id.in_(product_ids)).delete(synchronize_session=False)
+        db.session.commit()
+        
+        if num_deleted > 0:
+            # 可选：如果需要清理文件系统中的图片文件夹，可以在这里添加逻辑
+            # 例如，遍历 product_ids，删除对应的文件夹，但这会增加操作时间
+            # for product_id in product_ids:
+            #     product_good_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', str(product_id))
+            #     if os.path.exists(product_good_dir):
+            #         shutil.rmtree(product_good_dir)
+            #     product_size_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'size_images', str(product_id))
+            #     if os.path.exists(product_size_dir):
+            #         shutil.rmtree(product_size_dir)
+            
+            return jsonify({'message': f'成功删除 {num_deleted} 个产品'}), 200
+        else:
+            return jsonify({'message': '没有找到与提供的ID匹配的产品进行删除'}), 404
+            
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"批量删除产品失败: {str(e)}")
+        return jsonify({'error': '批量删除产品操作失败', 'details': str(e)}), 500
 
 # 搜索产品
 @products_bp.route('/search', methods=['POST'])
@@ -245,27 +307,33 @@ def search_products():
                 filename = secure_filename(file.filename)
                 filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
                 file.save(filepath)
-                
+              
                 # 使用向量索引搜索相似产品
-                results = product_index.search(filepath, top_k=10)
-                
+                results = product_index.search_similar_images(filepath, top_k=10)
+  
                 # 清理上传的文件
                 os.remove(filepath)
-                
                 # 获取产品详细信息
-                product_ids = [result.id for result in results]
+                product_ids = [result.get('product_id') for result in results]
                 products = Product.query.filter(Product.id.in_(product_ids)).all()
-                
+                 
                 # 将产品对象转换为字典
                 product_list = []
-                for product in products:
-                    product_dict = product.to_dict()
-                    # 添加相似度分数
-                    for result in results:
-                        if result.id == product.id:
-                            product_dict['similarity'] = result.similarity
-                            break
-                    product_list.append(product_dict)
+                # Create a dictionary for quick lookup of products by id
+                products_dict = {p.id: p for p in products}
+                for result in results:
+                    product_id = result.get('product_id')
+                    product = products_dict.get(product_id)
+                    if product:
+                        product_data = {
+                            'id': product.id,
+                            'name': product.name,
+                            'description': product.description,
+                            'price': product.price, # Using product.price as per frontend snippet
+                            'similarity': result.get('similarity'),
+                            'image_path': result.get('image_path') # Use the specific matched image path
+                        }
+                        product_list.append(product_data)
                 
                 # 按相似度排序
                 product_list.sort(key=lambda x: x.get('similarity', 0), reverse=True)
@@ -280,7 +348,7 @@ def search_products():
             results = product_index.search_by_text(query, top_k=10)
             
             # 获取产品详细信息
-            product_ids = [result.id for result in results]
+            product_ids = [result.get('product_id') for result in results]
             products = Product.query.filter(Product.id.in_(product_ids)).all()
             
             # 将产品对象转换为字典
@@ -562,25 +630,8 @@ def upload_csv():
                     product.image_url = good_img_urls[0]  # 使用第一张图片作为主图
                     db.session.commit()
                 
-                # 如果配置了向量搜索
-                if current_app.config.get('PRODUCT_INDEX') and good_img_urls:
-                    try:
-                        # 添加到向量索引
-                        product_index = current_app.config['PRODUCT_INDEX']
-                        for good_img_url in good_img_urls:
-                            image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', str(product_id), os.path.basename(good_img_url.split('/')[-1]))
-                            # 创建产品信息对象
-                            feature = product_index.extract_feature(image_path)
-                            product_image = ProductImage(
-                                product_id=product_id,
-                                image_path=good_img_url,
-                                vector=feature
-                            )
-                            db.session.add(product_image)
-                        db.session.commit()
-                        current_app.logger.info(f"已将产品 {product.id} 添加到向量索引")
-                    except Exception as e:
-                        current_app.logger.error(f"添加产品到向量索引时出错: {e}")
+                # 向量索引逻辑已移至 _add_images_to_vector_index 函数
+                # upload_csv 函数不再直接处理向量索引的创建
                 
                 stats['success'] += 1
             except Exception as e:
@@ -598,24 +649,161 @@ def upload_csv():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+# 辅助函数：将产品图片添加到向量索引
+def _add_images_to_vector_index(product_id, good_img_urls):
+    if not current_app.config.get('PRODUCT_INDEX') or not good_img_urls:
+        current_app.logger.info(f"Skipping vector indexing for product {product_id}: Product index not configured or no image URLs provided.")
+        return
+
+    product_index = current_app.config['PRODUCT_INDEX']
+    images_to_index = []
+    try:
+        for web_path in good_img_urls:
+            # 从 web_path 重建文件系统路径, 与保存文件时的方式保持一致
+            # web_path 示例: "/uploads/good_images/{product_id}/{unique_filename}"
+            filename = os.path.basename(web_path)
+            filesystem_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', str(product_id), filename)
+
+            if not os.path.exists(filesystem_path):
+                current_app.logger.error(f"Image file not found for vector indexing: {filesystem_path} (derived from web_path: {web_path}) for product {product_id}")
+                continue
+            
+            try:
+                feature = product_index.extract_feature(filesystem_path)
+                product_image_record = ProductImage(
+                    product_id=product_id,
+                    image_path=web_path,  # 这是图片的 web 路径
+                    vector=feature
+                )
+                images_to_index.append(product_image_record)
+            except Exception as feature_exc:
+                current_app.logger.error(f"Error extracting feature for image {filesystem_path} of product {product_id}: {feature_exc}")
+                continue # 继续处理其他图片
+
+        if images_to_index:
+            db.session.add_all(images_to_index)
+            db.session.commit()
+            current_app.logger.info(f"Successfully added {len(images_to_index)} images for product {product_id} to vector index and ProductImage table.")
+        else:
+            current_app.logger.info(f"No images were successfully processed for vector indexing for product {product_id}.")
+
+    except Exception as e:
+        db.session.rollback() # 如果批量添加失败，则回滚
+        current_app.logger.error(f"Error adding images to vector index for product {product_id}: {e}")
+
+# 构建向量索引（用于图片相似度检索）
+@products_bp.route('/build-vector-index', methods=['POST'])
+@cross_origin()
+def build_vector_index():
+    try:
+        # 获取所有产品
+        products = Product.query.all()
+        
+        # 清空现有的产品图片向量索引
+        ProductImage.query.delete()
+        db.session.commit()
+        
+        # 重新初始化向量索引
+        if 'PRODUCT_INDEX' in current_app.config:
+            product_index = current_app.config['PRODUCT_INDEX']
+        else:
+            # 如果尚未初始化，创建一个新的向量索引
+            from product_search import VectorProductIndex
+            product_index = VectorProductIndex()
+            current_app.config['PRODUCT_INDEX'] = product_index
+        
+        success_count = 0
+        error_count = 0
+        
+        # 为每个产品的图片创建向量索引
+        for product in products:
+            try:
+                # 获取产品图片
+                good_img_urls = parse_list_field(product.good_img)
+                
+                if not good_img_urls:
+                    continue
+                
+                # 为每张图片创建向量索引
+                for good_img_url in good_img_urls:
+                    try:
+                        # 构建图片的完整路径
+                        image_path = os.path.join(
+                            current_app.config['UPLOAD_FOLDER'], 
+                            'good_images', 
+                            str(product.id), 
+                            os.path.basename(good_img_url)
+                        )
+                        
+                        # 检查文件是否存在
+                        if not os.path.exists(image_path):
+                            current_app.logger.warning(f"图片文件不存在: {image_path}")
+                            continue
+                        
+                        # 提取特征向量
+                        feature = product_index.extract_feature(image_path)
+                        
+                        # 创建产品图片向量记录
+                        product_image = ProductImage(
+                            product_id=product.id,
+                            image_path=good_img_url,
+                            vector=feature
+                        )
+                        db.session.add(product_image)
+                        success_count += 1
+                        
+                    except Exception as e:
+                        current_app.logger.error(f"处理图片 {good_img_url} 时出错: {str(e)}")
+                        error_count += 1
+                        continue
+                
+                # 每处理10个产品提交一次事务
+                if product.id % 10 == 0:
+                    db.session.commit()
+                    
+            except Exception as e:
+                current_app.logger.error(f"处理产品 {product.id} 时出错: {str(e)}")
+                error_count += 1
+                continue
+        
+        # 最终提交事务
+        db.session.commit()
+        
+        # 重新加载向量索引
+        if 'PRODUCT_INDEX' in current_app.config:
+            product_index = current_app.config['PRODUCT_INDEX']
+            product_index._load_vectors()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'向量索引构建完成。成功: {success_count}, 失败: {error_count}',
+            'success_count': success_count,
+            'error_count': error_count
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"构建向量索引时出错: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 # 生成唯一的产品ID
 def generate_product_id(name, factory_name):
     combined = f"{name}_{factory_name}_{time.time()}"
     return hashlib.md5(combined.encode()).hexdigest()[:16]
 
 # 解析列表字段（如图片URL列表）
-def parse_list_field(field):
+def parse_list_field(field_value):
     try:
-        if isinstance(field, str):
+        if isinstance(field_value, str):
             # 尝试解析JSON字符串
-            return json.loads(field)
-        elif isinstance(field, list):
-            return field
+            return json.loads(field_value)
+        elif isinstance(field_value, list):
+            return field_value
         else:
             return []
     except json.JSONDecodeError:
         # 尝试使用ast.literal_eval解析
         try:
-            return ast.literal_eval(field)
+            return ast.literal_eval(field_value)
         except (SyntaxError, ValueError):
             return []

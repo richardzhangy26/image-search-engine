@@ -335,15 +335,11 @@ export const OrderManagement: React.FC = () => {
             <div key={idx} className="text-sm border-b last:border-b-0 pb-2 last:pb-0">
               <div className="font-medium text-gray-900">{product.name}</div>
               <div className="text-gray-500">
-                <span className="mr-2">ID: {product.product_id}</span>
-                <span className="mr-2">|</span>
-                <span className="mr-2">尺码: {product.size || '无'}</span>
-                <span className="mr-2">|</span>
-                <span className="mr-2">颜色: {product.color || '无'}</span>
-                <span className="mr-2">|</span>
-                <span className="mr-2">数量: {product.quantity}</span>
-                <span className="mr-2">|</span>
-                <span>售价: ¥{product.price.toFixed(2)}</span>
+                <span className="mr-2">ID: {product.product_id}</span>{', '}
+                <span className="mr-2">{product.size || '无'}</span>{', '}
+                <span className="mr-2">{product.color || '无'}</span>{', '}
+                <span className="mr-2">{product.quantity}</span>{', '}
+                <span>¥{product.price.toFixed(2)}</span>
               </div>
             </div>
           ))}

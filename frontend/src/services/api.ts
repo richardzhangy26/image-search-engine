@@ -276,6 +276,47 @@ export const deleteProduct = async (productId: string): Promise<{ message: strin
   return response.json();
 };
 
+// 批量删除产品
+export const batchDeleteProductsAPI = async (productIds: React.Key[]): Promise<{ message: string; num_deleted?: number }> => {
+  // 后端期望产品ID是数字
+  const idsAsNumbers = productIds.map(id => Number(id)).filter(id => !isNaN(id));
+
+  if (idsAsNumbers.length !== productIds.length) {
+    // 如果有些ID无法转换为有效的数字，这可能是一个问题
+    console.warn('batchDeleteProductsAPI: Some product IDs could not be converted to numbers.', productIds);
+    // 可以选择抛出错误或仅使用有效的数字ID
+    // throw new Error('提供的部分产品ID无效');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/products/batch-delete`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ ids: idsAsNumbers }),
+  });
+
+  if (!response.ok) {
+    let errorMessage = `批量删除产品失败 (HTTP ${response.status})`;
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.message || errorData.error || errorData.details || errorMessage;
+    } catch (e) {
+      // 如果响应不是JSON，尝试获取文本错误信息
+      try {
+        const textError = await response.text();
+        if (textError) errorMessage = textError; // 使用文本错误（如果存在）
+      } catch (textEx) {
+        // 忽略获取文本时的错误
+      }
+      console.error('Failed to parse JSON error response for batch delete, or response was not JSON.');
+    }
+    throw new Error(errorMessage);
+  }
+
+  return response.json(); // 后端应该返回 { message: string, num_deleted?: number }
+};
+
 // 删除产品图片
 export const deleteProductImage = async (productId: string, filename: string) => {
   // 确保文件名不包含开头的斜杠
@@ -294,4 +335,21 @@ export const deleteProductImage = async (productId: string, filename: string) =>
   }
   
   return await response.json();
+};
+
+// 构建向量索引（用于图片相似度检索）
+export const buildVectorIndex = async (): Promise<{ message: string; status: string }> => {
+  const response = await fetch(`${API_BASE_URL}/api/products/build-vector-index`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || '构建向量索引失败');
+  }
+
+  return response.json();
 };

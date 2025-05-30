@@ -14,7 +14,7 @@ import io
 import time
 import random
 from pathlib import Path
-from models import ProductImage,Product
+from models import ProductImage,Product,db
 load_dotenv()
 
 # 设置DashScope API密钥
@@ -52,10 +52,10 @@ class VectorProductIndex:
         
         # 初始化FAISS索引
         self.index = faiss.IndexFlatL2(dimension)  # L2距离的平面索引
-        
+        self.faiss_id_to_db_id_map = {} # 用于存储product_images.id
         # 创建数据库表
         self.conn = pymysql.connect(**DB_CONFIG)
-        self._create_tables()
+        # self._create_tables()
         self._load_vectors()
         
     def _create_tables(self):
@@ -83,12 +83,33 @@ class VectorProductIndex:
             self.conn.commit()
 
     def _load_vectors(self):
+        retrieved_db_ids = []
+        retrieved_vectors_list = []
         with self.conn.cursor() as cursor:
-            cursor.execute("SELECT vector FROM product_images ORDER BY id")
-            vectors = cursor.fetchall()
-            if vectors:
-                vectors_array = np.vstack([np.frombuffer(v[0], dtype=np.float32) for v in vectors])
+            # 同时选择 product_images.id 和 vector
+            cursor.execute("SELECT id, vector FROM product_images ORDER BY id")
+            rows = cursor.fetchall()
+            if rows:
+                for db_id, vector_blob in rows:
+                    retrieved_db_ids.append(db_id)
+                    retrieved_vectors_list.append(np.frombuffer(vector_blob, dtype=np.float32))
+                
+                vectors_array = np.vstack(retrieved_vectors_list)
+                
+                # 如果 _load_vectors 可能被多次调用（例如手动刷新索引），
+                # 或者为了确保索引是干净的，最好先 reset
+                if self.index.ntotal > 0:
+                    self.index.reset() 
+                
                 self.index.add(vectors_array)
+                self.faiss_id_to_db_id_map = retrieved_db_ids # 存储映射关系
+            else:
+                # 如果数据库中没有向量
+                if self.index.ntotal > 0:
+                    self.index.reset()
+                self.faiss_id_to_db_id_map = []
+        
+        print(f"成功加载 {len(self.faiss_id_to_db_id_map)} 个向量到索引。")
 
     def _get_db_connection(self):
         """获取MySQL数据库连接"""
@@ -215,6 +236,8 @@ class VectorProductIndex:
         Returns:
             List[Dict[str, Any]]: 商品信息字典列表
         """
+        results = []
+        
         # 提取查询图片特征
         print(f"正在提取查询图片特征: {query_image_path}")
         query_feature = self.extract_feature(query_image_path)
@@ -226,38 +249,96 @@ class VectorProductIndex:
         distances, indices = self.index.search(query_feature, top_k)
         print(f"搜索结果 - distances: {distances}, indices: {indices}")
         
-        results = []
+        # 使用ORM查询匹配的产品
         try:
-            with self.conn.cursor(cursor_factory=pymysql.cursors.DictCursor) as cursor:
-                for i, (distance, vector_id) in enumerate(zip(distances[0], indices[0])):
-                    if vector_id == -1:  # 没有找到匹配的向量
-                        continue
-                        
-                    # 查询匹配图片的商品信息
-                    cursor.execute("""
-                        SELECT p.id, p.name, p.attributes, p.price, p.description, pi.image_path
-                        FROM products p
-                        JOIN product_images pi ON p.id = pi.product_id
-                        WHERE pi.id = %s
-                    """, (int(vector_id) + 1,))
+            for i, (distance, vector_id) in enumerate(zip(distances[0], indices[0])):
+                if vector_id == -1:  # 没有找到匹配的向量
+                    continue
                     
-                    row = cursor.fetchone()
-                    if row:
-                        product = {
-                            'id': row['id'],
-                            'name': row['name'],
-                            'attributes': json.loads(row['attributes']),
-                            'price': row['price'],
-                            'description': row['description'],
-                            'image_path': row['image_path'],
-                            'similarity': float(1 / (1 + distance))  # 确保转换为原生 float
-                        }
-                        results.append(product)
-        except pymysql.Error as e:
+                # 查询匹配图片的商品信息 (vector_id 是从0开始的索引，而数据库ID从1开始)
+                product_image = ProductImage.query.filter_by(id=int(vector_id) + 1).first()
+                
+                if product_image:
+                    # 获取关联的产品
+                    product = product_image.product
+                    
+                    if product:
+                        similarity_score = float(1 / (1 + distance)) # 确保转换为原生 float
+                        results.append({
+                            'product_id': product.id,
+                            'similarity': similarity_score,
+                            'image_path': product_image.image_path
+                        })
+            
+        except Exception as e:
             print(f"搜索商品时发生错误: {e}")
             raise
-        
+            
         return results
+
+    def _distance_to_similarity(self, distance: float) -> float:
+        """将距离转换为相似度得分 (0-1范围，越高越好)。"""
+        # L2 距离的简单转换，可以根据需要调整
+        if distance < 0: # 距离不应为负，但以防万一
+            return 0.0
+        return 1 / (1 + distance)
+
+    def search_similar_images(self, image_path: str, top_k: int = 10) -> list:
+        if self.index.ntotal == 0:
+            return []
+        query_feature = self.extract_feature(image_path)
+        query_feature = query_feature.reshape(1, -1).astype('float32')
+        distances, faiss_indices = self.index.search(query_feature, top_k)
+        
+        product_images_ids_to_fetch = []
+        # 使用字典临时存储每个 product_images.id 对应的原始距离
+        temp_distance_map = {}
+
+        for i in range(len(faiss_indices[0])):
+            faiss_idx = faiss_indices[0][i]
+            dist = float(distances[0][i])
+            if 0 <= faiss_idx < len(self.faiss_id_to_db_id_map):
+                product_image_db_id = self.faiss_id_to_db_id_map[faiss_idx] # 这是 product_images.id
+                product_images_ids_to_fetch.append(product_image_db_id)
+                temp_distance_map[product_image_db_id] = dist
+            else:
+                print(f"警告: 在 search_similar_images 中发现无效的 Faiss 索引 {faiss_idx}。")
+
+        if not product_images_ids_to_fetch:
+            return []
+
+        final_results = []
+        # 假设 self.conn 是一个活跃的 pymysql 连接
+        # 最好在 VectorProductIndex 初始化时设置好 DictCursor，或者在此处指定
+        try:
+            with self.conn.cursor(pymysql.cursors.DictCursor) as cursor:
+                # 为 IN 子句构建占位符
+                placeholders = ','.join(['%s'] * len(product_images_ids_to_fetch))
+                sql = f"SELECT id, product_id, image_path FROM product_images WHERE id IN ({placeholders})"
+                
+                cursor.execute(sql, tuple(product_images_ids_to_fetch))
+                db_rows = cursor.fetchall()
+
+                for row in db_rows:
+                    product_image_id = row['id'] # product_images.id
+                    distance = temp_distance_map.get(product_image_id)
+                    
+                    if distance is not None:
+                        similarity = self._distance_to_similarity(distance)
+                        final_results.append({
+                            'product_id': row['product_id'],       # products.id
+                            'image_path': row['image_path'], # product_images.image_path
+                            'similarity': similarity
+                        })
+        except pymysql.Error as e:
+            print(f"数据库查询错误 (search_similar_images): {e}")
+            # 根据错误处理策略，可能返回空列表或重新抛出异常
+            return []
+        
+        # 按相似度降序排序结果
+        final_results.sort(key=lambda x: x['similarity'], reverse=True)
+        
+        return final_results
     
     def save_index(self, index_path: str):
         """保存FAISS索引到文件"""

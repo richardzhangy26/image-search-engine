@@ -90,19 +90,29 @@ export const ProductSearch: React.FC = () => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchImage) return;
+    console.log('搜索按钮被点击');
+    console.log('搜索图片状态:', searchImage ? '已选择' : '未选择');
+    
+    if (!searchImage) {
+      console.log('未选择图片，搜索终止');
+      return;
+    }
 
     setLoading(true);
     setError(null);
+    console.log('开始搜索，图片大小:', searchImage.size, '字节');
+    
     try {
-      const { results } = await searchProducts(searchImage);
-      console.log('Search results:', results); // 添加调试日志
+      console.log('发送搜索请求到:', `${API_BASE_URL}/api/products/search`);
+      const results = await searchProducts(searchImage);
+      console.log('搜索结果:', results); 
       setResults(results);
     } catch (err) {
-      console.error('Search error:', err); // 添加调试日志
+      console.error('搜索错误:', err); 
       setError(err instanceof Error ? err.message : '搜索失败');
     } finally {
       setLoading(false);
+      console.log('搜索完成');
     }
   };
 
@@ -240,14 +250,14 @@ export const ProductSearch: React.FC = () => {
         </button>
       </form>
 
-      {results.length > 0 && (
+      {results && results.length > 0 && (
         <div>
           <h3 className="text-xl font-semibold mb-4">搜索结果</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {results.map((result) => (
               <Link 
-                to={`/product/${result.product_id}`} 
-                key={result.product_id}
+                to={`/product/${result.id}`} 
+                key={result.id}
                 className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200"
               >
                 <div className="cursor-pointer">
@@ -268,14 +278,6 @@ export const ProductSearch: React.FC = () => {
                     <p className="text-sm text-gray-500 mt-2">
                       {result.description}
                     </p>
-                    {Object.entries(result.attributes).map(([key, value]) => (
-                      <span
-                        key={key}
-                        className="inline-block bg-gray-100 rounded-full px-3 py-1 text-sm text-gray-600 mr-2 mt-2"
-                      >
-                        {key}: {value}
-                      </span>
-                    ))}
                     <div className="mt-3 text-sm text-blue-600 font-medium">
                       查看详情 →
                     </div>
