@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Image, Select, message, Table, Button, Popconfirm, Space, Input, Upload } from 'antd';
 import { SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import OrderCreation from './OrderCreation';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 interface Order {
   id: string;
@@ -564,43 +564,75 @@ export const OrderManagement: React.FC = () => {
   };
 
   // 处理导出订单
-  const handleExportOrders = () => {
+  const handleExportOrders = async () => {
     if (selectedRowKeys.length === 0) {
       message.warning('请先选择要导出的订单');
       return;
     }
 
-    const selectedOrders = orders.filter(order => selectedRowKeys.includes(order.id));
-    const exportData = selectedOrders.map(order => {
-      // 处理每个订单的产品信息
-      const products = order.products || [];
-      return products.map(product => ({
-        '收件人姓名': order.customer_name,
-        '收件人手机/电话': order.customer_phone,
-        '收件人详细地址': order.shipping_address,
-        '物品名称': product.name,
-        '数量': product.quantity,
-        '商品编码': product.product_id,
-        '销售属性': `${product.color || ''}, ${product.size || ''}`,
-        '订单ID': order.id,
-        '寄件人姓名': '刘桥',
-        '寄件人手机/电话': '13127531338',
-        '寄件人省': '上海市',
-        '寄件人市': '上海市',
-        '寄件人县/区': '普陀区',
-        '寄件人详细地址': '上海市普陀区金沙金沙江路2299弄35号502室'
-      }));
-    }).flat(); // 展平数组，因为一个订单可能包含多个产品
+    try {
+      // 准备导出数据
+      const selectedOrders = orders.filter(order => selectedRowKeys.includes(order.id));
+      const exportData = selectedOrders.map(order => {
+        const products = order.products || [];
+        return products.map(product => ({
+          orderNumber: order.order_number,
+          customerName: order.customer_name,
+          totalAmount: order.total_amount,
+          status: order.status,
+          paymentStatus: order.payment_status,
+          shippingAddress: order.shipping_address,
+          createdAt: order.created_at,
+          customerNotes: order.customer_notes,
+          productName: product.name,
+          quantity: product.quantity,
+          productCode: product.product_id,
+          attributes: `${product.color || ''}, ${product.size || ''}`
+        }));
+      }).flat(); // 展平数组，因为一个订单可能包含多个产品
 
-    // 创建工作表
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "订单数据");
-
-    // 导出文件
-    const fileName = `订单导出_${new Date().toLocaleDateString()}.xlsx`;
-    XLSX.writeFile(wb, fileName);
-    message.success('订单导出成功');
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('订单数据');
+      
+      // 定义列
+      worksheet.columns = [
+        { header: '订单编号', key: 'orderNumber', width: 20 },
+        { header: '客户名称', key: 'customerName', width: 15 },
+        { header: '总金额', key: 'totalAmount', width: 15 },
+        { header: '订单状态', key: 'status', width: 15 },
+        { header: '支付状态', key: 'paymentStatus', width: 15 },
+        { header: '收货地址', key: 'shippingAddress', width: 30 },
+        { header: '创建时间', key: 'createdAt', width: 20 },
+        { header: '客户备注', key: 'customerNotes', width: 20 },
+        { header: '商品名称', key: 'productName', width: 20 },
+        { header: '数量', key: 'quantity', width: 10 },
+        { header: '商品编码', key: 'productCode', width: 15 },
+        { header: '商品属性', key: 'attributes', width: 20 }
+      ];
+      
+      // 添加数据
+      worksheet.addRows(exportData);
+      
+      // 设置样式
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+      
+      // 导出文件
+      const fileName = `订单导出_${new Date().toLocaleDateString()}.xlsx`;
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      
+      message.success('导出成功');
+    } catch (error) {
+      console.error('导出失败:', error);
+      message.error('导出失败');
+    }
   };
 
   // 处理导入订单
