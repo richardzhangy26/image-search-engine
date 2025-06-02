@@ -353,6 +353,17 @@ export const ProductUpload: React.FC = () => {
       render: (price: number) => `¥${price.toFixed(2)}`,
     },
     {
+      title: '工厂名称',
+      dataIndex: 'factory_name',
+      key: 'factory_name',
+      filters: Array.from(new Set(products.map(p => p.factory_name).filter(Boolean))).map(name => ({
+        text: name,
+        value: name,
+      })),
+      filteredValue: filteredInfo.factory_name || null,
+      onFilter: (value: string, record: ProductInfo) => record.factory_name === value,
+    },
+    {
       title: '操作',
       key: 'action',
       render: (_: any, record: ProductInfo) => (
@@ -437,7 +448,7 @@ export const ProductUpload: React.FC = () => {
             onClick={handleBuildVectorIndex}
             loading={indexingLoading}
           >
-            向量索引
+            构建向量索引
           </Button>
           <Button
             type="dashed" // 或者使用 type="danger" 如果您希望更醒目

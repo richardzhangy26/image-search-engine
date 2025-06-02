@@ -696,12 +696,24 @@ def _add_images_to_vector_index(product_id, good_img_urls):
 @cross_origin()
 def build_vector_index():
     try:
-        # 获取所有产品
-        products = Product.query.all()
+        existing_product_ids = set(
+            db.session.query(ProductImage.product_id.distinct()).scalar_all()
+        )
         
-        # 清空现有的产品图片向量索引
-        ProductImage.query.delete()
-        db.session.commit()
+        # 获取所有有图片但还没有向量索引的产品
+        products = Product.query.filter(
+            and_(
+                Product.id.notin_(existing_product_ids),
+                Product.good_img.isnot(None),
+                Product.good_img != ''
+            )
+        ).all()
+        
+        if not products:
+            return jsonify({
+                'message': '所有产品的图片都已建立向量索引',
+                'products_processed': 0
+            })
         
         # 重新初始化向量索引
         if 'PRODUCT_INDEX' in current_app.config:
