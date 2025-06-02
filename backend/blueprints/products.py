@@ -15,6 +15,9 @@ import uuid
 import ast
 from flask_cors import cross_origin
 import shutil
+import json # 确保导入 json
+from flask import Response, stream_with_context # 确保导入 Response 和 stream_with_context
+from sqlalchemy import and_ # <--- 添加这一行
 
 products_bp = Blueprint('products', __name__, url_prefix='/api/products')
 
@@ -321,6 +324,8 @@ def search_products():
                 product_list = []
                 # Create a dictionary for quick lookup of products by id
                 products_dict = {p.id: p for p in products}
+
+                temp_product_list = [] # 临时列表，可能包含重复的 product_id
                 for result in results:
                     product_id = result.get('product_id')
                     product = products_dict.get(product_id)
@@ -329,16 +334,28 @@ def search_products():
                             'id': product.id,
                             'name': product.name,
                             'description': product.description,
-                            'price': product.price, # Using product.price as per frontend snippet
+                            'price': product.price, 
                             'similarity': result.get('similarity'),
-                            'image_path': result.get('image_path') # Use the specific matched image path
+                            'image_path': result.get('image_path') 
                         }
-                        product_list.append(product_data)
+                        temp_product_list.append(product_data)
                 
-                # 按相似度排序
-                product_list.sort(key=lambda x: x.get('similarity', 0), reverse=True)
+                # 按相似度排序（确保后续去重时保留相似度最高的）
+                temp_product_list.sort(key=lambda x: x.get('similarity', 0), reverse=True)
+
+                # 去重：确保每个 product_id 只出现一次，保留相似度最高的
+                final_product_list = []
+                seen_product_ids = set()
+                for item in temp_product_list:
+                    if item['id'] not in seen_product_ids:
+                        final_product_list.append(item)
+                        seen_product_ids.add(item['id'])
                 
-                return jsonify(product_list)
+                # 最终列表已经是按相似度排序的（因为原始列表已排序，且我们按顺序添加）
+                # 如果需要再次确认排序，可以取消下面这行注释，但通常不需要
+                # final_product_list.sort(key=lambda x: x.get('similarity', 0), reverse=True)
+                
+                return jsonify(final_product_list)
         
         # 处理文本搜索
         elif 'query' in request.json:
@@ -692,111 +709,76 @@ def _add_images_to_vector_index(product_id, good_img_urls):
         current_app.logger.error(f"Error adding images to vector index for product {product_id}: {e}")
 
 # 构建向量索引（用于图片相似度检索）
-@products_bp.route('/build-vector-index', methods=['POST'])
-@cross_origin()
+@products_bp.route('/build-vector-index', methods=['GET'])
+@cross_origin() # 确保跨域支持
 def build_vector_index():
-    try:
-        existing_product_ids = set(
-            db.session.query(ProductImage.product_id.distinct()).scalar_all()
-        )
-        
-        # 获取所有有图片但还没有向量索引的产品
-        products = Product.query.filter(
-            and_(
-                Product.id.notin_(existing_product_ids),
-                Product.good_img.isnot(None),
-                Product.good_img != ''
-            )
-        ).all()
-        
-        if not products:
-            return jsonify({
-                'message': '所有产品的图片都已建立向量索引',
-                'products_processed': 0
-            })
-        
-        # 重新初始化向量索引
-        if 'PRODUCT_INDEX' in current_app.config:
-            product_index = current_app.config['PRODUCT_INDEX']
-        else:
-            # 如果尚未初始化，创建一个新的向量索引
-            from product_search import VectorProductIndex
-            product_index = VectorProductIndex()
-            current_app.config['PRODUCT_INDEX'] = product_index
-        
-        success_count = 0
-        error_count = 0
-        
-        # 为每个产品的图片创建向量索引
-        for product in products:
-            try:
-                # 获取产品图片
-                good_img_urls = parse_list_field(product.good_img)
-                
-                if not good_img_urls:
-                    continue
-                
-                # 为每张图片创建向量索引
-                for good_img_url in good_img_urls:
-                    try:
-                        # 构建图片的完整路径
-                        image_path = os.path.join(
-                            current_app.config['UPLOAD_FOLDER'], 
-                            'good_images', 
-                            str(product.id), 
-                            os.path.basename(good_img_url)
-                        )
-                        
-                        # 检查文件是否存在
-                        if not os.path.exists(image_path):
-                            current_app.logger.warning(f"图片文件不存在: {image_path}")
-                            continue
-                        
-                        # 提取特征向量
-                        feature = product_index.extract_feature(image_path)
-                        
-                        # 创建产品图片向量记录
-                        product_image = ProductImage(
-                            product_id=product.id,
-                            image_path=good_img_url,
-                            vector=feature
-                        )
-                        db.session.add(product_image)
-                        success_count += 1
-                        
-                    except Exception as e:
-                        current_app.logger.error(f"处理图片 {good_img_url} 时出错: {str(e)}")
-                        error_count += 1
+    def event_stream_generator():
+        try:
+            # 初始化向量索引 (这部分逻辑可以保留在生成器外部或开始处，确保索引对象已准备好)
+            if 'PRODUCT_INDEX' not in current_app.config:
+                from product_search import VectorProductIndex
+                product_index = VectorProductIndex()
+                current_app.config['PRODUCT_INDEX'] = product_index
+            # else: product_index = current_app.config['PRODUCT_INDEX'] # 已在外部作用域定义
+            existing_product_id_tuples = db.session.query(ProductImage.product_id.distinct()).all()
+            existing_product_ids = {pid[0] for pid in existing_product_id_tuples} # 从元组中提取ID并放入集合
+            
+            products_to_process = Product.query.filter(
+                and_(
+                    Product.id.notin_(existing_product_ids),
+                    Product.good_img.isnot(None),
+                    Product.good_img != ''
+                )
+            ).all()
+            
+            total_count = len(products_to_process)
+            yield f"data: {json.dumps({'type': 'total', 'value': total_count})}\n\n"
+
+            if total_count == 0:
+                yield f"data: {json.dumps({'type': 'complete', 'message': '所有产品的图片都已建立向量索引', 'products_processed': 0, 'errors': []})}\n\n"
+                return
+
+            processed_count = 0
+            error_list = [] # 用于收集处理单个产品时发生的错误信息
+            
+            for product in products_to_process:
+                try:
+                    good_img_urls = parse_list_field(product.good_img)
+                    if not good_img_urls:
+                        # 如果产品没有图片URL，也算作“处理”过，但不进行索引
+                        processed_count += 1
+                        yield f"data: {json.dumps({'type': 'progress', 'processed': processed_count, 'total': total_count, 'current_product_id': product.id, 'status': 'skipped_no_images'})}\n\n"
                         continue
-                
-                # 每处理10个产品提交一次事务
-                if product.id % 10 == 0:
-                    db.session.commit()
                     
-            except Exception as e:
-                current_app.logger.error(f"处理产品 {product.id} 时出错: {str(e)}")
-                error_count += 1
-                continue
+                    # 调用辅助函数进行向量索引
+                    # _add_images_to_vector_index 应该处理自己的内部错误并记录，这里我们只关心它是否成功触发
+                    _add_images_to_vector_index(product.id, good_img_urls)
+                    # 假设 _add_images_to_vector_index 成功执行（或内部处理了错误）
+                    processed_count += 1
+                    yield f"data: {json.dumps({'type': 'progress', 'processed': processed_count, 'total': total_count, 'current_product_id': product.id, 'status': 'processed'})}\n\n"
+                
+                except Exception as e:
+                    # 这个 catch 块捕获在迭代单个产品时发生的、未被 _add_images_to_vector_index 捕获的意外错误
+                    error_msg = f"处理产品 {product.id} (名称: {product.name}) 时发生意外错误: {str(e)}"
+                    current_app.logger.error(error_msg)
+                    error_list.append(error_msg)
+                    # 即使发生错误，也更新进度，表明尝试过处理该产品
+                    processed_count += 1 
+                    yield f"data: {json.dumps({'type': 'progress', 'processed': processed_count, 'total': total_count, 'current_product_id': product.id, 'status': 'error'})}\n\n"
+                    continue # 继续处理下一个产品
+            
+            final_message = f'向量索引构建完成。成功处理（或跳过） {processed_count} 个产品中的 {total_count} 个。'
+            if error_list:
+                final_message += f" 发生 {len(error_list)} 个错误。"
+
+            yield f"data: {json.dumps({'type': 'complete', 'message': final_message, 'products_processed': processed_count, 'total_products_considered': total_count, 'errors': error_list})}\n\n"
         
-        # 最终提交事务
-        db.session.commit()
-        
-        # 重新加载向量索引
-        if 'PRODUCT_INDEX' in current_app.config:
-            product_index = current_app.config['PRODUCT_INDEX']
-            product_index._load_vectors()
-        
-        return jsonify({
-            'status': 'success',
-            'message': f'向量索引构建完成。成功: {success_count}, 失败: {error_count}',
-            'success_count': success_count,
-            'error_count': error_count
-        })
-        
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"构建向量索引时出错: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        except Exception as e:
+            # 捕获生成器初始化或查询时发生的顶层错误
+            current_app.logger.error(f"构建向量索引流时发生严重错误: {str(e)}")
+            yield f"data: {json.dumps({'type': 'error', 'message': f'构建向量索引过程中发生严重错误: {str(e)}'})}\n\n"
+
+    return Response(stream_with_context(event_stream_generator()), mimetype='text/event-stream')
 
 # 生成唯一的产品ID
 def generate_product_id(name, factory_name):

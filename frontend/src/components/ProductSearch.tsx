@@ -258,29 +258,20 @@ export const ProductSearch: React.FC = () => {
               <Link 
                 to={`/product/${result.id}`} 
                 key={result.id}
-                className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200"
+                className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 p-4"
               >
                 <div className="cursor-pointer">
-                  <img
-                    src={getImageUrl(result.image_path)}
-                    alt={result.name}
-                    className="w-full h-48 object-cover"
-                    onError={(e) => handleImageError(e, result)}
-                  />
-                  <div className="p-4">
-                    <h4 className="font-semibold">{result.name}</h4>
-                    <p className="text-sm text-gray-600 mb-2">
-                      相似度: {(result.similarity * 100).toFixed(2)}%
-                    </p>
-                    <p className="text-lg font-bold text-blue-600">
-                      ¥{result.price.toFixed(2)}
-                    </p>
-                    <p className="text-sm text-gray-500 mt-2">
-                      {result.description}
-                    </p>
-                    <div className="mt-3 text-sm text-blue-600 font-medium">
-                      查看详情 →
-                    </div>
+                  <p className="text-sm text-gray-700 mb-1">
+                    产品ID: {result.id}
+                  </p>
+                  <p className="text-sm text-gray-600 mb-2">
+                    相似度: {(result.similarity * 100).toFixed(2)}%
+                  </p>
+                  <p className="text-lg font-bold text-blue-600">
+                    ¥{result.price.toFixed(2)}
+                  </p>
+                  <div className="mt-3 text-sm text-blue-600 font-medium">
+                    查看详情 →
                   </div>
                 </div>
               </Link>
@@ -357,3 +348,5 @@ export const ProductSearch: React.FC = () => {
     </div>
   );
 };
+
+export default ProductSearch;

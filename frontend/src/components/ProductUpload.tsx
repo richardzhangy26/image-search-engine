@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, InputNumber, message, Popconfirm, Upload, Image, Select } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, SearchOutlined } from '@ant-design/icons';
+import { Table, Button, Modal, Form, Input, InputNumber, message, Popconfirm, Upload, Image, Select, Progress } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, SearchOutlined, LoadingOutlined } from '@ant-design/icons';
 import { uploadProductCSV, ProductInfo, getProducts, addProduct, updateProduct, deleteProduct, deleteProductImage, API_BASE_URL, buildVectorIndex, batchDeleteProductsAPI } from '../services/api';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 
@@ -19,6 +19,9 @@ export const ProductUpload: React.FC = () => {
   const [filteredInfo, setFilteredInfo] = useState<Record<string, string[] | null>>({});
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]); // 新增: 用于存储选中的行
   const [batchDeleteLoading, setBatchDeleteLoading] = useState(false); // 新增: 批量删除按钮加载状态
+  const [progressPercent, setProgressPercent] = useState<number>(0);
+  const [progressMessage, setProgressMessage] = useState<string>('');
+  const [showProgress, setShowProgress] = useState<boolean>(false);
 
   useEffect(() => {
     fetchProducts();
@@ -137,14 +140,52 @@ export const ProductUpload: React.FC = () => {
 
   const handleBuildVectorIndex = async () => {
     setIndexingLoading(true);
-    try {
-      const result = await buildVectorIndex();
-      message.success(result.message || '向量索引构建成功');
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '向量索引构建失败');
-    } finally {
+    setShowProgress(true); // 开始时显示进度条
+    setProgressMessage('开始构建向量索引...');
+    setProgressPercent(0);
+
+    const eventSource = new EventSource(`${import.meta.env.VITE_API_BASE_URL}/api/products/build-vector-index`, {
+      // 如果你的API需要认证，可能需要在这里配置 withCredentials 或 headers
+      // withCredentials: true, // 如果需要发送 cookies
+    });
+
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      console.log('SSE Data:', data);
+
+      if (data.type === 'total') {
+        setProgressMessage(`共有 ${data.value} 个产品需要处理...`);
+      } else if (data.type === 'progress') {
+        const percent = data.total > 0 ? (data.processed / data.total) * 100 : 0;
+        setProgressPercent(percent);
+        setProgressMessage(`正在处理: ${data.processed} / ${data.total} (产品ID: ${data.current_product_id}, 状态: ${data.status})`);
+      } else if (data.type === 'complete') {
+        setProgressMessage(data.message || '向量索引构建完成！');
+        setProgressPercent(100); // 确保完成时是100%
+        message.success(data.message || '向量索引构建完成！');
+        if (data.errors && data.errors.length > 0) {
+          data.errors.forEach((err: string) => message.error(err, 10)); // 显示每个错误，持续10秒
+        }
+        setIndexingLoading(false);
+        // setShowProgress(false); //可以选择在完成后隐藏进度条，或者保留显示最终状态
+        eventSource.close();
+      } else if (data.type === 'error') {
+        setProgressMessage(`错误: ${data.message}`);
+        message.error(`索引构建时发生错误: ${data.message}`);
+        setIndexingLoading(false);
+        // setShowProgress(false);
+        eventSource.close();
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error('EventSource failed:', err);
+      message.error('连接到索引服务失败，请检查网络或联系管理员。');
       setIndexingLoading(false);
-    }
+      setProgressMessage('连接错误，请重试。');
+      // setShowProgress(false);
+      eventSource.close();
+    };
   };
 
   const handleImageDelete = async (file: UploadFile, fieldName: string) => {
@@ -450,6 +491,12 @@ export const ProductUpload: React.FC = () => {
           >
             构建向量索引
           </Button>
+          {showProgress && (
+            <div style={{ marginTop: '16px' }}>
+              <Progress percent={progressPercent} />
+              {progressMessage && <p style={{ marginTop: '8px' }}>{progressMessage}</p>}
+            </div>
+          )}
           <Button
             type="dashed" // 或者使用 type="danger" 如果您希望更醒目
             onClick={handleBatchDelete}
