@@ -353,3 +353,54 @@ export const buildVectorIndex = async (): Promise<{ message: string; status: str
 
   return response.json();
 };
+
+// SSE 事件处理器类型定义
+export interface BuildVectorIndexHandlers {
+  onTotal?: (total: number) => void;
+  onProgress?: (processed: number, total: number, currentProductId: string, status: string) => void;
+  onComplete?: (message?: string, errors?: string[]) => void;
+  onError?: (message: string) => void;
+  onConnectionError?: (error: Event) => void;
+}
+
+export const buildVectorIndexSSE = (handlers: BuildVectorIndexHandlers): (() => void) => {
+  const eventSource = new EventSource(`${API_BASE_URL}/api/products/build-vector-index/sse`);
+
+  eventSource.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log('SSE Data:', data);
+
+    switch (data.type) {
+      case 'total':
+        handlers.onTotal?.(data.value);
+        break;
+      case 'progress':
+        handlers.onProgress?.(
+          data.processed,
+          data.total,
+          data.current_product_id,
+          data.status
+        );
+        break;
+      case 'complete':
+        handlers.onComplete?.(data.message, data.errors);
+        eventSource.close();
+        break;
+      case 'error':
+        handlers.onError?.(data.message);
+        eventSource.close();
+        break;
+    }
+  };
+
+  eventSource.onerror = (err) => {
+    console.error('EventSource failed:', err);
+    handlers.onConnectionError?.(err);
+    eventSource.close();
+  };
+
+  // 返回一个清理函数，用于在需要时关闭连接
+  return () => {
+    eventSource.close();
+  };
+};
