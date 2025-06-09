@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Image, Select, message, Table, Button, Popconfirm, Space, Input, Upload } from 'antd';
+import { Modal, Image, Select, message, Table, Button, Popconfirm, Space, Input, Upload, DatePicker } from 'antd';
 import { SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import OrderCreation from './OrderCreation';
 import ExcelJS from 'exceljs';
+import type { Dayjs } from 'dayjs';
 
 interface Order {
   id: string;
@@ -27,15 +28,6 @@ interface Order {
   internal_notes?: string;
 }
 
-interface ProductInfo {
-  id: string;
-  name: string;
-  sale_price: number;
-  price: number;
-  color?: string;
-  size?: string;
-  good_img?: string;
-}
 
 import { API_BASE_URL } from '../services/api';
 
@@ -79,6 +71,7 @@ export const OrderManagement: React.FC = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [searchText, setSearchText] = useState('');
   const [searchedColumn, setSearchedColumn] = useState('');
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
 
   // 获取订单列表
   const fetchOrders = async (
@@ -95,6 +88,12 @@ export const OrderManagement: React.FC = () => {
       // 如果有状态筛选，添加到查询参数
       if (statusFilter) {
         params.append('status', statusFilter);
+      }
+
+      // 如果有日期范围筛选，添加到查询参数
+      if (dateRange && dateRange[0] && dateRange[1]) {
+        params.append('start_date', dateRange[0].format('YYYY-MM-DD'));
+        params.append('end_date', dateRange[1].format('YYYY-MM-DD'));
       }
 
       const response = await fetch(`${API_BASE_URL}/api/orders?${params}`, {
@@ -218,7 +217,7 @@ export const OrderManagement: React.FC = () => {
       fetchOrders();
       message.success('订单状态更新成功');
     } catch (error) {
-      console.error('更新订单状态时出错:', error);
+      console.error('更新订状态时出错:', error);
       message.error('更新订单状态失败');
     }
   };
@@ -415,6 +414,53 @@ export const OrderManagement: React.FC = () => {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+        <div style={{ padding: 8 }}>
+          <DatePicker.RangePicker
+            value={dateRange}
+            onChange={(dates) => {
+              setDateRange(dates);
+              if (dates) {
+                setSelectedKeys([`${dates[0]?.format('YYYY-MM-DD')}_${dates[1]?.format('YYYY-MM-DD')}`]);
+              } else {
+                setSelectedKeys([]);
+              }
+            }}
+            format="YYYY-MM-DD"
+            style={{ marginBottom: 8, display: 'block' }}
+          />
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => {
+                confirm();
+                fetchOrders(1); // 重新加载第一页数据
+              }}
+              size="small"
+              style={{ width: 90 }}
+            >
+              筛选
+            </Button>
+            <Button
+              onClick={() => {
+                if (clearFilters) {
+                  clearFilters();
+                }
+                setDateRange(null);
+                setSelectedKeys([]);
+                fetchOrders(1); // 重新加载第一页数据
+              }}
+              size="small"
+              style={{ width: 90 }}
+            >
+              重置
+            </Button>
+          </Space>
+        </div>
+      ),
+      filterIcon: (filtered: boolean) => (
+        <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
+      ),
       render: (text: string) => (
         <div className="text-sm text-gray-500">{new Date(text).toLocaleString('zh-CN')}</div>
       ),
@@ -693,10 +739,10 @@ export const OrderManagement: React.FC = () => {
     }
   };
 
-  // 使用 useEffect 监听 statusFilter 变化
+  // 使用 useEffect 监听 statusFilter 和 dateRange 变化
   useEffect(() => {
     fetchOrders(1);
-  }, [statusFilter]);
+  }, [statusFilter, dateRange]);
 
   // 初始加载
   useEffect(() => {

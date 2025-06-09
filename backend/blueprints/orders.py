@@ -109,6 +109,8 @@ def list_orders():
         per_page (int): 每页数量，默认10
         customer_id (int): 客户ID，可选
         status (str): 订单状态，可选
+        start_date (str): 开始日期，格式：YYYY-MM-DD，可选
+        end_date (str): 结束日期，格式：YYYY-MM-DD，可选
         sort (str): 排序字段，可选，默认按创建时间倒序
         order (str): 排序方向，可选，asc或desc，默认desc
     """
@@ -118,6 +120,8 @@ def list_orders():
         per_page = request.args.get('per_page', 10, type=int)
         customer_id = request.args.get('customer_id', type=int)
         status = request.args.get('status')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
         sort_field = request.args.get('sort', 'created_at')
         sort_order = request.args.get('order', 'desc')
 
@@ -129,6 +133,22 @@ def list_orders():
             query = query.filter(Order.customer_id == customer_id)
         if status:
             query = query.filter(Order.status == status)
+        
+        # 应用日期范围筛选
+        if start_date:
+            try:
+                start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
+                query = query.filter(Order.created_at >= start_datetime)
+            except ValueError:
+                return jsonify({'error': '开始日期格式错误，请使用YYYY-MM-DD格式'}), 400
+                
+        if end_date:
+            try:
+                # 将结束日期设置为当天的23:59:59
+                end_datetime = datetime.strptime(end_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+                query = query.filter(Order.created_at <= end_datetime)
+            except ValueError:
+                return jsonify({'error': '结束日期格式错误，请使用YYYY-MM-DD格式'}), 400
 
         # 应用排序
         sort_column = getattr(Order, sort_field, Order.created_at)

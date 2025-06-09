@@ -540,8 +540,23 @@ def upload_csv():
         if not os.path.exists(images_folder):
             return jsonify({'error': '图片文件夹路径不存在'}), 400
 
-        # 读取CSV文件
-        csv_content = file.read().decode('utf-8')
+        # 读取CSV文件，支持多种编码格式
+        csv_content_bytes = file.read()
+        csv_content = None
+        
+        # 尝试多种编码格式解码
+        encodings = ['utf-8', 'gb2312', 'gbk', 'utf-8-sig']  # utf-8-sig用于处理BOM
+        for encoding in encodings:
+            try:
+                csv_content = csv_content_bytes.decode(encoding)
+                current_app.logger.info(f"成功使用 {encoding} 编码读取CSV文件")
+                break
+            except UnicodeDecodeError:
+                continue
+        
+        if csv_content is None:
+            return jsonify({'error': '无法解码CSV文件，请确保文件编码为UTF-8或GB2312格式'}), 400
+        
         csv_file = io.StringIO(csv_content)
         csv_reader = csv.DictReader(csv_file)
         
