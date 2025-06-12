@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, message, Card } from 'antd';
+import { Button, message, Card, Input, Form } from 'antd';
 
 interface AddressInfo {
   name: string;
@@ -17,6 +17,7 @@ const AddressParser: React.FC<Props> = ({ onAddressSelected, onAddressParseSucce
   const [addressText, setAddressText] = useState('');
   const [parsedAddress, setParsedAddress] = useState<AddressInfo | null>(null);
   const [isParsing, setIsParsing] = useState(false);
+  const [form] = Form.useForm<AddressInfo>();
 
   const handleParse = async () => {
     if (!addressText.trim()) {
@@ -41,6 +42,7 @@ const AddressParser: React.FC<Props> = ({ onAddressSelected, onAddressParseSucce
 
       const data = await response.json();
       setParsedAddress(data);
+      form.setFieldsValue(data);
       message.success('地址解析成功');
     } catch (error) {
       message.error('解析地址失败');
@@ -53,18 +55,24 @@ const AddressParser: React.FC<Props> = ({ onAddressSelected, onAddressParseSucce
     if (!parsedAddress) return;
     
     try {
+      const values = await form.validateFields();
       const saveResponse = await fetch('http://localhost:5000/api/customers', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(parsedAddress),
+        body: JSON.stringify(values),
       });
 
       if (saveResponse.ok) {
-        message.success('客户信息已保存到数据库');
+        if (saveResponse.status === 201) {
+          message.success('新客户已创建');
+        } else {
+          message.success('客户信息已更新');
+        }
+
         if (onAddressSelected) {
-          onAddressSelected(parsedAddress);
+          onAddressSelected(values);
         }
         if (onAddressParseSuccess) {
           onAddressParseSuccess();
@@ -72,7 +80,8 @@ const AddressParser: React.FC<Props> = ({ onAddressSelected, onAddressParseSucce
         setAddressText('');
         setParsedAddress(null);
       } else {
-        message.error('保存客户信息失败');
+        const errorData = await saveResponse.json();
+        message.error(errorData.error || '保存客户信息失败');
       }
     } catch (error) {
       message.error('保存客户信息失败');
@@ -97,20 +106,38 @@ const AddressParser: React.FC<Props> = ({ onAddressSelected, onAddressParseSucce
       </Button>
       
       {parsedAddress && (
-        <div className="space-y-4">
+        <Form form={form} layout="vertical" initialValues={parsedAddress}>
           <Card title="解析结果" size="small">
-            <p><strong>姓名：</strong>{parsedAddress.name}</p>
-            <p><strong>电话：</strong>{parsedAddress.phone}</p>
-            <p><strong>地址：</strong>{parsedAddress.default_address}</p>
+            <Form.Item
+              name="name"
+              label="姓名"
+              rules={[{ required: true, message: '请输入姓名' }]}
+            >
+              <Input />
+            </Form.Item>
+            <Form.Item
+              name="phone"
+              label="电话"
+              rules={[{ required: true, message: '请输入电话' }]}
+            >
+              <Input />
+            </Form.Item>
+            <Form.Item
+              name="default_address"
+              label="地址"
+              rules={[{ required: true, message: '请输入地址' }]}
+            >
+              <Input.TextArea rows={3} />
+            </Form.Item>
           </Card>
           <Button 
             type="primary" 
             onClick={handleSave} 
-            className="w-full"
+            className="w-full mt-4"
           >
             保存到数据库
           </Button>
-        </div>
+        </Form>
       )}
     </div>
   );

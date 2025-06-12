@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Image, Select, message, Table, Button, Popconfirm, Space, Input, Upload, DatePicker } from 'antd';
 import { SearchOutlined, UploadOutlined } from '@ant-design/icons';
+import type { TablePaginationConfig, SorterResult, FilterValue, Key } from 'antd/es/table/interface';
 import OrderCreation from './OrderCreation';
 import ExcelJS from 'exceljs';
 import type { Dayjs } from 'dayjs';
@@ -188,7 +189,7 @@ export const OrderManagement: React.FC = () => {
 
       message.success('订单删除成功');
       // 重新加载订单列表
-      fetchOrders(pagination.current, pagination.pageSize, { field: sortField, order: sortOrder });
+      fetchOrders(pagination.current, pagination.pageSize);
     } catch (error) {
       if (error instanceof Error) {
         console.error('删除订单时出错:', error);
@@ -238,7 +239,11 @@ export const OrderManagement: React.FC = () => {
     filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
       <div style={{ padding: 8 }}>
         <Input
-          placeholder={`搜索 ${dataIndex}`}
+          placeholder={
+            dataIndex === 'customer_info' ? '搜索姓名、电话、地址' : 
+            dataIndex === 'customer_id' ? '搜索客户ID' :
+            `搜索 ${dataIndex}`
+          }
           value={selectedKeys[0]}
           onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
           onPressEnter={() => handleSearch(selectedKeys as string[], confirm, dataIndex)}
@@ -266,13 +271,17 @@ export const OrderManagement: React.FC = () => {
     filterIcon: (filtered: boolean) => (
       <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
     ),
-    onFilter: (value: string, record: Order) => {
-      if (dataIndex === 'customer_info') {
-        return (
-          record.customer_name?.toString().toLowerCase().includes(value.toLowerCase()) ||
-          record.customer_phone?.toString().toLowerCase().includes(value.toLowerCase()) ||
-          record.shipping_address?.toString().toLowerCase().includes(value.toLowerCase())
-        );
+    onFilter: (value: string | Key | boolean, record: Order) => {
+      if (typeof value === 'string') {
+        if (dataIndex === 'customer_info') {
+          return (
+            record.customer_name?.toString().toLowerCase().includes(value.toLowerCase()) ||
+            record.customer_phone?.toString().toLowerCase().includes(value.toLowerCase()) ||
+            record.shipping_address?.toString().toLowerCase().includes(value.toLowerCase())
+          );
+        } else if (dataIndex === 'customer_id') {
+          return record.customer_id?.toString().toLowerCase().includes(value.toLowerCase());
+        }
       }
       return false;
     },
@@ -291,6 +300,15 @@ export const OrderManagement: React.FC = () => {
             <div className="text-sm text-gray-500">备注: {record.internal_notes}</div>
           )}
         </div>
+      ),
+    },
+    {
+      title: '客户ID',
+      dataIndex: 'customer_id',
+      key: 'customer_id',
+      ...getColumnSearchProps('customer_id'),
+      render: (text: string) => (
+        <div className="text-sm font-medium text-gray-900">{text}</div>
       ),
     },
     {
@@ -468,7 +486,7 @@ export const OrderManagement: React.FC = () => {
     {
       title: '操作',
       key: 'actions',
-      render: (_, record: Order) => (
+      render: (_: any, record: Order) => (
         <Space size="middle">
           <Button 
             type="link" 
@@ -488,7 +506,7 @@ export const OrderManagement: React.FC = () => {
           <Popconfirm
             title="确定要删除这个订单吗？"
             description="删除后将无法恢复！"
-            onConfirm={() => handleDeleteOrder(record.id)}
+            onConfirm={() => handleDeleteOrder(parseInt(record.id))}
             okText="确定"
             cancelText="取消"
           >
@@ -503,25 +521,29 @@ export const OrderManagement: React.FC = () => {
   const generateOrderText = (order: Order) => {
     const lines = [
       `订单编号：${order.id}`,
+      `----------------------------------------------------------`,
       `收件人姓名：${order.customer_name}`,
       `联系方式：${order.customer_phone || ''}`,
       `收件地址：${order.shipping_address || ''}`,
+      `-----------------------------------------------------------`,
     ];
 
     // 添加商品信息
     const products = order.products || [];
     products.forEach((product, index) => {
       lines.push(
-        `商品名称（编码）：${product.name}（${product.product_id}）`,
+        `商品ID：${product.product_id}`,
         `销售属性：${product.color || ''} ${product.size || ''}`,
         `数量：${product.quantity}`,
         `价格：${product.price} 元`,
       );
     });
 
-    // 添加总计
+    // 添加分隔线和总计
     lines.push(
+      `---------------------------------------------`,
       `总计：${order.total_amount} 元`,
+      ``,
       `订单状态：${order.status === 'shipped' ? '已发货' : 
                    order.status === 'unshipped' ? '未发货' :
                    order.status === 'purchased' ? '已采购' :
@@ -529,12 +551,9 @@ export const OrderManagement: React.FC = () => {
                    order.status === 'paid' ? '已付款' :
                    order.status === 'returned' ? '退货' :
                    order.status === 'exchanged' ? '换货' : '未付款'}`,
+      `客户备注：${order.internal_notes || ''}`,
+      `快递单号：${order.tracking_number || ''}`
     );
-
-    // 如果有快递信息，添加快递单号
-    if (order.tracking_number) {
-      lines.push(`快递单号：${order.tracking_number}`);
-    }
 
     return lines.join('\n');
   };

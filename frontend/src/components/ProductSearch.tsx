@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { searchProducts, SearchResult, getImageUrl, getProductById, API_BASE_URL } from '../services/api';
+import { searchProducts, SearchResult, getImageUrl, getProductById, API_BASE_URL, ProductInfo } from '../services/api';
 import { Input, Card, Image, Descriptions, message } from 'antd';
 
 export const ProductSearch: React.FC = () => {
@@ -104,9 +104,9 @@ export const ProductSearch: React.FC = () => {
     
     try {
       console.log('发送搜索请求到:', `${API_BASE_URL}/api/products/search`);
-      const results = await searchProducts(searchImage);
-      console.log('搜索结果:', results); 
-      setResults(results);
+      const data = await searchProducts(searchImage);
+      console.log('搜索结果:', data.results); 
+      setResults(data.results);
     } catch (err) {
       console.error('搜索错误:', err); 
       setError(err instanceof Error ? err.message : '搜索失败');
@@ -117,7 +117,7 @@ export const ProductSearch: React.FC = () => {
   };
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>, result: SearchResult) => {
-    console.error(`Error loading image for product ${result.product_id}`, e);
+    console.error(`Error loading image for product ${result.id}`, e);
     console.log('Image path that failed:', result.image_path);
     console.log('Original path:', result.original_path);
     
@@ -170,12 +170,12 @@ export const ProductSearch: React.FC = () => {
       <h2 className="text-2xl font-bold mb-4">搜索商品</h2>
       
       <div className="mb-4">
-        <Input
+        <Input.Search
           placeholder="请输入商品ID"
           enterButton="搜索"
           size="large"
           loading={loading}
-          onPressEnter={(e) => handleIdSearch(e.currentTarget.value)}
+          onSearch={handleIdSearch}
         />
       </div>
 
@@ -292,7 +292,7 @@ export const ProductSearch: React.FC = () => {
                   Array.isArray(product.good_img) 
                     ? product.good_img 
                     : JSON.parse(product.good_img)
-                ).map((img, index) => (
+                ).map((img: string, index: number) => (
                   <Image
                     key={index}
                     src={`${API_BASE_URL}${img}`}
@@ -308,7 +308,7 @@ export const ProductSearch: React.FC = () => {
                     {(Array.isArray(product.size_img) 
                       ? product.size_img 
                       : JSON.parse(product.size_img)
-                    ).map((img, index) => (
+                    ).map((img: string, index: number) => (
                       <Image
                         key={index}
                         src={`${API_BASE_URL}${img}`}

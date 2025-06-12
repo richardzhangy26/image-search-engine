@@ -129,9 +129,11 @@ def get_customers():
         customer_dict['pinyin'] = get_pinyin(customer.name)
         customer_list.append(customer_dict)
     
-    # 如果有名字搜索
+    # 如果有名字搜索 - 支持中文和拼音搜索
     if name_query:
-        customer_list = [c for c in customer_list if c['pinyin'].startswith(name_query)]
+        customer_list = [c for c in customer_list if 
+                        c['pinyin'].startswith(name_query) or  # 拼音搜索
+                        c['name'].lower().startswith(name_query)]  # 中文搜索
     
     # 如果有电话号码搜索
     if phone_query:

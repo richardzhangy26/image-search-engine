@@ -224,7 +224,7 @@ const CustomerManagement: React.FC = () => {
       filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
         <div style={{ padding: 8 }}>
           <Input
-            placeholder="搜索姓名拼音"
+            placeholder="搜索姓名(支持中文和拼音)"
             value={selectedKeys[0]}
             onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
             onPressEnter={() => {
@@ -391,31 +391,29 @@ const CustomerManagement: React.FC = () => {
 
       {error && <div className="text-red-500 mb-4">{error}</div>}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          {loading ? (
-            <div className="p-4 text-center">加载中...</div>
-          ) : (
-            <Table
-              columns={columns}
-              dataSource={customers}
-              rowKey="id"
-              pagination={{
-                pageSize: 5,
-                showSizeChanger: false,
-                showQuickJumper: true,
-                showTotal: (total) => `共 ${total} 条记录`,
-              }}
-            />
-          )}
-        </div>
-        
-        <div>
-          <AddressParser 
-            onAddressSelected={handleAddressSelected} 
-            onAddressParseSuccess={() => fetchCustomers(nameFilter, phoneFilter, sortOrder === 'descend' ? 'desc' : 'asc')} 
+      <div className="mb-6">
+        <AddressParser 
+          onAddressSelected={handleAddressSelected} 
+          onAddressParseSuccess={() => fetchCustomers(nameFilter, phoneFilter, sortOrder === 'descend' ? 'desc' : 'asc')} 
+        />
+      </div>
+
+      <div>
+        {loading ? (
+          <div className="p-4 text-center">加载中...</div>
+        ) : (
+          <Table
+            columns={columns}
+            dataSource={customers}
+            rowKey="id"
+            pagination={{
+              pageSize: 10,
+              showSizeChanger: false,
+              showQuickJumper: true,
+              showTotal: (total) => `共 ${total} 条记录`,
+            }}
           />
-        </div>
+        )}
       </div>
 
       <Modal
@@ -448,7 +446,7 @@ const CustomerManagement: React.FC = () => {
           <Form.Item
             name="wechat"
             label="微信号"
-            rules={[{ required: true, message: '请输入微信号' }]}
+            rules={[{ message: '请输入微信号' }]}
           >
             <Input />
           </Form.Item>
