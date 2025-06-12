@@ -1,5 +1,24 @@
-// API基础URL
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+// API基础URL - 智能检测局域网访问
+const getApiBaseUrl = () => {
+  // 首先检查环境变量
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  
+  // 根据当前访问地址智能设置后端地址
+  const hostname = window.location.hostname;
+  
+  // 如果通过 localhost 或 127.0.0.1 访问
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://localhost:5000';
+  }
+  
+  // 如果通过局域网 IP 访问，使用相同的 IP
+  return `http://${hostname}:5000`;
+};
+
+export const API_BASE_URL = getApiBaseUrl();
+
 export interface ProductInfo {
   id?: string;
   name: string;

@@ -242,8 +242,8 @@ export const ProductUpload: React.FC = () => {
           </Button>
           <Button
             onClick={() => {
-              setFilteredInfo({});
-              confirm({ closeDropdown: true });
+              clearFilters && clearFilters();
+              setFilteredInfo(prev => ({ ...prev, id: null }));
             }}
             size="small"
             style={{ width: 90 }}
@@ -289,8 +289,8 @@ export const ProductUpload: React.FC = () => {
           </Button>
           <Button
             onClick={() => {
-              setFilteredInfo({});
-              confirm({ closeDropdown: true });
+              clearFilters && clearFilters();
+              setFilteredInfo(prev => ({ ...prev, name: null }));
             }}
             size="small"
             style={{ width: 90 }}
@@ -343,6 +343,7 @@ export const ProductUpload: React.FC = () => {
         { text: '售罄', value: 'sold_out' },
         { text: '预售', value: 'pre_sale' },
       ],
+      filteredValue: filteredInfo.sales_status || null,
       onFilter: (value: string, record: ProductInfo) => record.sales_status === value,
       render: (text: string, record: ProductInfo) => (
         <Select
@@ -511,6 +512,9 @@ export const ProductUpload: React.FC = () => {
         dataSource={products}
         rowSelection={rowSelection} // 启用行选择
         loading={loading}
+        onChange={(pagination, filters) => {
+          setFilteredInfo(filters as Record<string, string[] | null>);
+        }}
         pagination={{
           total: products.length,
           pageSize: 10,

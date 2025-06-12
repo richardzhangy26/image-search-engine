@@ -258,6 +258,8 @@ export const ProductSearch: React.FC = () => {
               <Link 
                 to={`/product/${result.id}`} 
                 key={result.id}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 p-4"
               >
                 <div className="cursor-pointer">
