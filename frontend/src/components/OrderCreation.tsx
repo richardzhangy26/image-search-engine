@@ -24,6 +24,7 @@ interface CustomerInfo {
 
 interface OrderCreationProps {
   onOrderCreate?: (order: any) => void;
+  editingOrder?: any;
 }
 
 const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreate }) => {
@@ -40,6 +41,8 @@ const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreate }) => {
   const [selectedProducts, setSelectedProducts] = useState<any[]>([]);
   const [isErrorModalVisible, setIsErrorModalVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [currentProductColor, setCurrentProductColor] = useState('');
+  const [currentProductSize, setCurrentProductSize] = useState('');
 
   const [form] = Form.useForm();
 
@@ -83,8 +86,13 @@ const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreate }) => {
 
         setCurrentProduct({
           ...product,
+          id: product.id || '',
           image: thumbnailUrl
         });
+        
+        // 重置颜色和尺码选择
+        setCurrentProductColor(parseOptions(product.color)?.[0] || '');
+        setCurrentProductSize(parseOptions(product.size)?.[0] || '');
       } else {
         showError('未找到商品');
       }
@@ -124,9 +132,12 @@ const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreate }) => {
       name: currentProduct.name,
       quantity: 1,
       price: currentProduct.sale_price || currentProduct.price,
-      color: currentProduct.color || '',
-      size: currentProduct.size || '',
+      color: currentProductColor || '',
+      size: currentProductSize || '',
       image: currentProduct.image,
+      // 保存原始的颜色和尺码选项供后续修改使用
+      colorOptions: currentProduct.color || '',
+      sizeOptions: currentProduct.size || '',
     };
 
     setSelectedProducts([...selectedProducts, newProduct]);
@@ -137,6 +148,8 @@ const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreate }) => {
       description: '',
     });
     setTempProductId('');
+    setCurrentProductColor('');
+    setCurrentProductSize('');
   };
 
   // 更新商品数量
@@ -232,7 +245,6 @@ const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreate }) => {
 
   return (
     <div className="bg-white p-6 rounded-lg shadow">
-      <h2 className="text-xl font-semibold mb-4">添加新订单</h2>
       
       {/* 客户和商品ID输入区域 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -332,7 +344,8 @@ const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreate }) => {
                     <label className="text-sm text-gray-600">颜色:</label>
                     <Select
                       className="w-full"
-                      value={currentProduct.color}
+                      value={currentProductColor}
+                      onChange={setCurrentProductColor}
                     >
                       {parseOptions(currentProduct.color).map((color) => (
                         <Select.Option key={color} value={color}>{color}</Select.Option>
@@ -345,7 +358,8 @@ const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreate }) => {
                     <label className="text-sm text-gray-600">尺码:</label>
                     <Select
                       className="w-full"
-                      value={currentProduct.size}
+                      value={currentProductSize}
+                      onChange={setCurrentProductSize}
                     >
                       {parseOptions(currentProduct.size).map((size) => (
                         <Select.Option key={size} value={size}>{size}</Select.Option>
@@ -412,7 +426,7 @@ const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreate }) => {
                         onChange={(e) => handleQuantityChange(index, parseInt(e.target.value) || 1)}
                       />
                     </div>
-                    {product.color && (
+                    {product.colorOptions && (
                       <div>
                         <label className="text-sm text-gray-600">颜色:</label>
                         <Select
@@ -420,13 +434,13 @@ const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreate }) => {
                           value={product.color}
                           onChange={(value) => handleColorChange(index, value)}
                         >
-                          {parseOptions(product.color).map((color) => (
+                          {parseOptions(product.colorOptions).map((color) => (
                             <Select.Option key={color} value={color}>{color}</Select.Option>
                           ))}
                         </Select>
                       </div>
                     )}
-                    {product.size && (
+                    {product.sizeOptions && (
                       <div>
                         <label className="text-sm text-gray-600">尺码:</label>
                         <Select
@@ -434,7 +448,7 @@ const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreate }) => {
                           value={product.size}
                           onChange={(value) => handleSizeChange(index, value)}
                         >
-                          {parseOptions(product.size).map((size) => (
+                          {parseOptions(product.sizeOptions).map((size) => (
                             <Select.Option key={size} value={size}>{size}</Select.Option>
                           ))}
                         </Select>

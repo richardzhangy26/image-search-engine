@@ -1,13 +1,8 @@
 // API基础URL - 智能检测局域网访问
 const getApiBaseUrl = () => {
-  // 首先检查环境变量
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL;
-  }
-  
   // 根据当前访问地址智能设置后端地址
   const hostname = window.location.hostname;
-  
+  console.log('hostname', hostname);
   // 如果通过 localhost 或 127.0.0.1 访问
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return 'http://localhost:5000';
@@ -16,7 +11,7 @@ const getApiBaseUrl = () => {
   // 如果通过局域网 IP 访问，使用相同的 IP
   return `http://${hostname}:5000`;
 };
-
+// export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 export const API_BASE_URL = getApiBaseUrl();
 
 export interface ProductInfo {
@@ -112,16 +107,39 @@ export const getImageUrl = (imagePath: string): string => {
 };
 
 export const getProductById = async (productId: string): Promise<ProductInfo> => {
-  const response = await fetch(`${API_BASE_URL}/api/products/${productId}`, {
-    method: 'GET',
-  });
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/products/${productId}`, {
+      method: 'GET',
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || '获取商品详情失败');
+    if (!response.ok) {
+      let errorMessage = '获取商品详情失败';
+      
+      if (response.status === 404) {
+        errorMessage = `商品ID "${productId}" 不存在`;
+      } else if (response.status === 500) {
+        errorMessage = '服务器内部错误，请检查后端日志';
+      } else if (response.status === 0) {
+        errorMessage = 'CORS跨域错误 - 前端无法访问后端，请检查后端CORS配置';
+      } else {
+        try {
+          const error = await response.json();
+          errorMessage = error.error || `HTTP ${response.status}: ${response.statusText}`;
+        } catch {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error(`网络连接失败 - 无法连接到后端服务器 (${API_BASE_URL})`);
+    }
+    throw error;
   }
-
-  return response.json();
 };
 
 export const uploadProduct = async (
@@ -164,23 +182,40 @@ export const searchProducts = async (
     });
 
     if (!response.ok) {
-      // Clone the response before reading it
-      const errorClone = response.clone();
+      let errorMessage = '搜索失败';
       
-      try {
-        // Try to parse as JSON first
-        const error = await response.json();
-        throw new Error(error.error || '搜索失败');
-      } catch (jsonError) {
-        // If JSON parsing fails, get the text from the cloned response
-        const text = await errorClone.text();
-        console.error('Non-JSON error response:', text.substring(0, 100) + '...');
-        throw new Error('服务器返回了非JSON格式的响应，请检查服务器日志');
+      if (response.status === 404) {
+        errorMessage = '搜索接口不存在 - 请检查后端是否正确部署了搜索功能';
+      } else if (response.status === 400) {
+        errorMessage = '请求参数错误 - 图片格式可能不支持或文件损坏';
+      } else if (response.status === 500) {
+        errorMessage = '服务器内部错误 - 后端处理图片搜索时出错，请检查后端日志';
+      } else if (response.status === 0) {
+        errorMessage = 'CORS跨域错误 - 前端无法访问后端搜索接口，请检查后端CORS配置';
+      } else {
+        // Clone the response before reading it
+        const errorClone = response.clone();
+        
+        try {
+          // Try to parse as JSON first
+          const error = await response.json();
+          errorMessage = error.error || `HTTP ${response.status}: ${response.statusText}`;
+        } catch (jsonError) {
+          // If JSON parsing fails, get the text from the cloned response
+          const text = await errorClone.text();
+          console.error('Non-JSON error response:', text.substring(0, 100) + '...');
+          errorMessage = `HTTP ${response.status}: 服务器返回了非JSON格式的响应`;
+        }
       }
+      
+      throw new Error(errorMessage);
     }
 
     return await response.json();
   } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error(`网络连接失败 - 无法连接到后端搜索服务 (${API_BASE_URL}/api/products/search)`);
+    }
     console.error('Search request failed:', error);
     throw error instanceof Error ? error : new Error('搜索请求失败');
   }

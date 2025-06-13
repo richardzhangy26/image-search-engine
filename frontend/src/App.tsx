@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { Modal, Button } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import { ProductUpload } from './components/ProductUpload';
 import { ProductSearch } from './components/ProductSearch';
 import ProductDetails from './components/ProductDetails';
@@ -9,6 +11,28 @@ import OrderCreation from './components/OrderCreation';
 
 function App() {
   const [activeTab, setActiveTab] = useState<'search' | 'upload' | 'orders' | 'customers'>('search');
+  const [isOrderCreationVisible, setIsOrderCreationVisible] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<any>(null);
+
+  const handleOrderCreate = async (orderData: any) => {
+    // 关闭弹窗并重置编辑状态
+    setIsOrderCreationVisible(false);
+    setEditingOrder(null);
+    // 如果当前在订单页面，可以刷新订单列表
+    if (activeTab === 'orders') {
+      window.location.reload(); // 简单的刷新方式
+    }
+  };
+
+  const handleEditOrder = (order: any) => {
+    setEditingOrder(order);
+    setIsOrderCreationVisible(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsOrderCreationVisible(false);
+    setEditingOrder(null);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -24,7 +48,7 @@ function App() {
           path="/"
           element={
             <div className="flex">
-              {/* 左侧主内容区域 */}
+              {/* 主内容区域 */}
               <main className="flex-1 py-6 px-6">
                 <div className="mb-6">
                   <div className="border-b border-gray-200">
@@ -80,16 +104,44 @@ function App() {
                   {activeTab === 'customers' && <CustomerManagement />}
                 </div>
               </main>
-
-              {/* 右侧固定的订单创建面板 */}
-              <div className="w-[500px] min-h-screen border-l border-gray-200 bg-white overflow-y-auto">
-                <OrderCreation />
-              </div>
             </div>
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+
+      {/* 全局浮动按钮 */}
+      <Button
+        type="primary"
+        shape="circle"
+        size="large"
+        icon={<PlusOutlined />}
+        onClick={() => setIsOrderCreationVisible(true)}
+        style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          width: '56px',
+          height: '56px',
+          fontSize: '20px',
+          zIndex: 1000,
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+        }}
+        title="添加新订单"
+      />
+
+      {/* 全局订单创建/编辑弹窗 */}
+      <Modal
+        title={editingOrder ? "编辑订单" : "添加新订单"}
+        open={isOrderCreationVisible}
+        onCancel={handleCloseModal}
+        footer={null}
+        width={800}
+        style={{ top: 20 }}
+        bodyStyle={{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}
+      >
+        <OrderCreation onOrderCreate={handleOrderCreate} editingOrder={editingOrder} />
+      </Modal>
     </div>
   );
 }

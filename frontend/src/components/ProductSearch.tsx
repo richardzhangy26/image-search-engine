@@ -104,9 +104,9 @@ export const ProductSearch: React.FC = () => {
     
     try {
       console.log('发送搜索请求到:', `${API_BASE_URL}/api/products/search`);
-      const data = await searchProducts(searchImage);
-      console.log('搜索结果:', data.results); 
-      setResults(data.results);
+      const results = await searchProducts(searchImage);
+      console.log('搜索结果:', results); 
+      setResults(results);
     } catch (err) {
       console.error('搜索错误:', err); 
       setError(err instanceof Error ? err.message : '搜索失败');
@@ -234,7 +234,41 @@ export const ProductSearch: React.FC = () => {
         </div>
 
         {error && (
-          <div className="text-red-500 text-sm mb-4">{error}</div>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">操作失败</h3>
+                <div className="mt-2 text-sm text-red-700">
+                  <p>{error}</p>
+                  {error.includes('CORS跨域错误') && (
+                    <div className="mt-2 p-2 bg-red-100 rounded border-l-4 border-red-400">
+                      <p className="text-xs">
+                        <strong>解决方案：</strong><br/>
+                        1. 检查后端是否启动在正确的端口 (5000)<br/>
+                        2. 确认后端CORS配置包含当前访问地址：{window.location.origin}<br/>
+                        3. 检查防火墙和网络设置
+                      </p>
+                    </div>
+                  )}
+                  {error.includes('网络连接失败') && (
+                    <div className="mt-2 p-2 bg-red-100 rounded border-l-4 border-red-400">
+                      <p className="text-xs">
+                        <strong>解决方案：</strong><br/>
+                        1. 确认后端服务已启动<br/>
+                        2. 检查网络连接是否正常<br/>
+                        3. 尝试直接访问：<a href={API_BASE_URL} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">{API_BASE_URL}</a>
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
         <button
@@ -255,28 +289,24 @@ export const ProductSearch: React.FC = () => {
           <h3 className="text-xl font-semibold mb-4">搜索结果</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {results.map((result) => (
-              <Link 
-                to={`/product/${result.id}`} 
+              <div 
                 key={result.id}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 p-4"
+                className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 p-4 cursor-pointer"
+                onClick={() => window.open(`/product/${result.id}`, '_blank')}
               >
-                <div className="cursor-pointer">
-                  <p className="text-sm text-gray-700 mb-1">
-                    产品ID: {result.id}
-                  </p>
-                  <p className="text-sm text-gray-600 mb-2">
-                    相似度: {(result.similarity * 100).toFixed(2)}%
-                  </p>
-                  <p className="text-lg font-bold text-blue-600">
-                    ¥{result.price.toFixed(2)}
-                  </p>
-                  <div className="mt-3 text-sm text-blue-600 font-medium">
-                    查看详情 →
-                  </div>
+                <p className="text-sm text-gray-700 mb-1">
+                  产品ID: {result.id}
+                </p>
+                <p className="text-sm text-gray-600 mb-2">
+                  相似度: {(result.similarity * 100).toFixed(2)}%
+                </p>
+                <p className="text-lg font-bold text-blue-600">
+                  ¥{result.price.toFixed(2)}
+                </p>
+                <div className="mt-3 text-sm text-blue-600 font-medium">
+                  查看详情 →
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         </div>
@@ -292,7 +322,7 @@ export const ProductSearch: React.FC = () => {
                   Array.isArray(product.good_img) 
                     ? product.good_img 
                     : JSON.parse(product.good_img)
-                ).map((img: string, index: number) => (
+                ).map((img, index) => (
                   <Image
                     key={index}
                     src={`${API_BASE_URL}${img}`}
@@ -308,7 +338,7 @@ export const ProductSearch: React.FC = () => {
                     {(Array.isArray(product.size_img) 
                       ? product.size_img 
                       : JSON.parse(product.size_img)
-                    ).map((img: string, index: number) => (
+                    ).map((img, index) => (
                       <Image
                         key={index}
                         src={`${API_BASE_URL}${img}`}

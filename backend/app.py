@@ -30,11 +30,6 @@ def create_app(config_name='development'):
         r"/*": {
             "origins": [
                 "http://localhost:5173", 
-                "http://127.0.0.1:5173",
-                "http://192.168.0.200:5173",
-                "http://192.168.0.*:5173",  # 支持整个 192.168.0.x 网段
-                "http://192.168.1.*:5173",  # 支持 192.168.1.x 网段
-                "*"  # 开发环境可以考虑使用，生产环境应该删除
             ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],

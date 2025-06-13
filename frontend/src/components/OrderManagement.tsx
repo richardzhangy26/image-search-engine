@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Image, Select, message, Table, Button, Popconfirm, Space, Input, Upload, DatePicker } from 'antd';
 import { SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import type { TablePaginationConfig, SorterResult, FilterValue, Key } from 'antd/es/table/interface';
-import OrderCreation from './OrderCreation';
 import ExcelJS from 'exceljs';
 import type { Dayjs } from 'dayjs';
 
@@ -27,10 +26,15 @@ interface Order {
   tracking_number?: string;
   shipping_company?: string;
   internal_notes?: string;
+  customer_notes?: string;
 }
 
 
 import { API_BASE_URL } from '../services/api';
+
+interface OrderManagementProps {
+  onEditOrder?: (order: Order) => void;
+}
 
 // 辅助函数：根据状态获取颜色类名
 const getStatusClassName = (status: Order['status']) => {
@@ -56,7 +60,7 @@ const getStatusClassName = (status: Order['status']) => {
   }
 };
 
-export const OrderManagement: React.FC = () => {
+export const OrderManagement: React.FC<OrderManagementProps> = ({ onEditOrder }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -110,11 +114,12 @@ export const OrderManagement: React.FC = () => {
       }
       const data = await response.json();
       setOrders(data.orders || []);
-      setPagination({
-        ...pagination,
+      setPagination(prev => ({
+        ...prev,
         current: data.current_page,
+        pageSize: pageSize,
         total: data.total
-      });
+      }));
     } catch (error) {
       console.error('获取订单失败:', error);
       message.error('获取订单列表失败');
@@ -134,11 +139,12 @@ export const OrderManagement: React.FC = () => {
     setStatusFilter(statusFilterValue || '');
 
     // 处理分页
-    setPagination({
-      ...pagination,
+    const newPagination = {
       current: pagination.current || 1,
       pageSize: pagination.pageSize || 10,
-    });
+      total: pagination.total || 0
+    };
+    setPagination(newPagination);
 
     // 处理排序
     if (!Array.isArray(sorter)) {
@@ -146,25 +152,17 @@ export const OrderManagement: React.FC = () => {
       setSortField(field as string);
       setSortOrder(order as 'ascend' | 'descend');
     }
+
+    // 重新获取数据
+    fetchOrders(newPagination.current, newPagination.pageSize);
   };
 
-  // 创建新订单
+  // 处理订单创建
   const handleOrderCreate = async (orderData: any) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/orders`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(orderData),
-      });
-
-      if (!response.ok) {
-        throw new Error('创建订单失败');
-      }
-
+      // 刷新订单列表
+      await fetchOrders();
       message.success('订单创建成功');
-      fetchOrders(); // 刷新订单列表
     } catch (error) {
       console.error('创建订单失败:', error);
       message.error('创建订单失败');
@@ -307,8 +305,13 @@ export const OrderManagement: React.FC = () => {
       dataIndex: 'customer_id',
       key: 'customer_id',
       ...getColumnSearchProps('customer_id'),
-      render: (text: string) => (
-        <div className="text-sm font-medium text-gray-900">{text}</div>
+      render: (text: string, record: Order) => (
+        <div>
+          <div className="text-sm font-medium text-gray-900">{text}</div>
+          {(record.customer_notes || record.internal_notes) && (
+            <div className="text-sm text-gray-500">客户备注: {record.customer_notes || record.internal_notes}</div>
+          )}
+        </div>
       ),
     },
     {
@@ -495,13 +498,7 @@ export const OrderManagement: React.FC = () => {
               setIsModalVisible(true);
             }}
           >
-            编辑
-          </Button>
-          <Button
-            type="link"
-            onClick={() => copyOrderInfo(record)}
-          >
-            复制给客户
+            预览
           </Button>
           <Popconfirm
             title="确定要删除这个订单吗？"
@@ -551,8 +548,8 @@ export const OrderManagement: React.FC = () => {
                    order.status === 'paid' ? '已付款' :
                    order.status === 'returned' ? '退货' :
                    order.status === 'exchanged' ? '换货' : '未付款'}`,
-      `客户备注：${order.internal_notes || ''}`,
-      `快递单号：${order.tracking_number || ''}`
+      `客户备注：${order.customer_notes || ''}`,
+      `快递单号：${order.internal_notes|| ''}`
     );
 
     return lines.join('\n');
@@ -582,47 +579,50 @@ export const OrderManagement: React.FC = () => {
       });
   };
 
-  const renderOrderDetailModal = () => {
+  const renderOrderPreviewModal = () => {
     if (!selectedOrder) return null;
+
+    const getStatusText = (status: Order['status']) => {
+      switch (status) {
+        case 'unpaid': return '未付款';
+        case 'paid': return '已付款';
+        case 'unpurchased': return '未采购';
+        case 'purchased': return '已采购';
+        case 'unshipped': return '未发货';
+        case 'shipped': return '已发货';
+        case 'returned': return '退货';
+        case 'exchanged': return '换货';
+        default: return status;
+      }
+    };
+
+    const previewText = generateOrderText(selectedOrder);
 
     return (
       <Modal
-        title="订单详情"
-        visible={isModalVisible}
+        title="订单预览"
+        open={isModalVisible}
         onCancel={() => setIsModalVisible(false)}
-        footer={null}
+        footer={[
+          <Button key="copy" onClick={() => copyOrderInfo(selectedOrder)}>
+            复制订单信息
+          </Button>,
+          <Button key="close" onClick={() => setIsModalVisible(false)}>
+            关闭
+          </Button>
+        ]}
+        width={600}
       >
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <div className="text-lg font-medium">订单编号：{selectedOrder.id}</div>
-            <div className="text-lg font-medium">状态：{selectedOrder.status}</div>
-          </div>
-          <div className="flex justify-between items-center">
-            <div className="text-lg font-medium">用户信息：</div>
-            <div className="text-lg font-medium">{selectedOrder.customer_name}</div>
-          </div>
-          <div className="flex justify-between items-center">
-            <div className="text-lg font-medium">联系电话：</div>
-            <div className="text-lg font-medium">{selectedOrder.customer_phone}</div>
-          </div>
-          <div className="flex justify-between items-center">
-            <div className="text-lg font-medium">收货地址：</div>
-            <div className="text-lg font-medium">{selectedOrder.shipping_address}</div>
-          </div>
-          <div className="flex justify-between items-center">
-            <div className="text-lg font-medium">商品信息：</div>
-            <div className="text-lg font-medium">
-              {selectedOrder.products.map((product) => (
-                <div key={product.product_id}>
-                  {product.name} x {product.quantity}
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="flex justify-between items-center">
-            <div className="text-lg font-medium">订单金额：</div>
-            <div className="text-lg font-medium">¥{selectedOrder.total_amount.toFixed(2)}</div>
-          </div>
+        <div style={{ 
+          fontFamily: 'monospace', 
+          whiteSpace: 'pre-line', 
+          backgroundColor: '#f5f5f5',
+          padding: '16px',
+          borderRadius: '6px',
+          fontSize: '14px',
+          lineHeight: '1.5'
+        }}>
+          {previewText}
         </div>
       </Modal>
     );
@@ -641,18 +641,14 @@ export const OrderManagement: React.FC = () => {
       const exportData = selectedOrders.map(order => {
         const products = order.products || [];
         return products.map(product => ({
-          orderNumber: order.order_number,
+          orderNumber: order.id,
           customerName: order.customer_name,
-          totalAmount: order.total_amount,
-          status: order.status,
-          paymentStatus: order.payment_status,
-          shippingAddress: order.shipping_address,
-          createdAt: order.created_at,
-          customerNotes: order.customer_notes,
-          productName: product.name,
-          quantity: product.quantity,
+          customerPhone: order.customer_phone || '',
+          shippingAddress: order.shipping_address || '',
+          notes: order.customer_notes || '',
           productCode: product.product_id,
-          attributes: `${product.color || ''}, ${product.size || ''}`
+          attributes: `${product.color || ''}, ${product.size || ''}`.replace(/^, |, $/, '').trim() || '无',
+          quantity: product.quantity
         }));
       }).flat(); // 展平数组，因为一个订单可能包含多个产品
 
@@ -662,17 +658,13 @@ export const OrderManagement: React.FC = () => {
       // 定义列
       worksheet.columns = [
         { header: '订单编号', key: 'orderNumber', width: 20 },
-        { header: '客户名称', key: 'customerName', width: 15 },
-        { header: '总金额', key: 'totalAmount', width: 15 },
-        { header: '订单状态', key: 'status', width: 15 },
-        { header: '支付状态', key: 'paymentStatus', width: 15 },
-        { header: '收货地址', key: 'shippingAddress', width: 30 },
-        { header: '创建时间', key: 'createdAt', width: 20 },
-        { header: '客户备注', key: 'customerNotes', width: 20 },
-        { header: '商品名称', key: 'productName', width: 20 },
-        { header: '数量', key: 'quantity', width: 10 },
+        { header: '收件人姓名', key: 'customerName', width: 15 },
+        { header: '收件人联系方式', key: 'customerPhone', width: 20 },
+        { header: '收件人地址', key: 'shippingAddress', width: 30 },
+        { header: '备注', key: 'notes', width: 20 },
         { header: '商品编码', key: 'productCode', width: 15 },
-        { header: '商品属性', key: 'attributes', width: 20 }
+        { header: '商品属性', key: 'attributes', width: 20 },
+        { header: '数量', key: 'quantity', width: 10 }
       ];
       
       // 添加数据
@@ -809,11 +801,13 @@ export const OrderManagement: React.FC = () => {
           pageSize: pagination.pageSize,
           total: pagination.total,
           showSizeChanger: true,
+          pageSizeOptions: ['10', '20', '50', '100'],
+          showQuickJumper: true,
+          showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条 / 共 ${total} 条`,
         }}
         onChange={handleTableChange}
       />
-      {renderOrderDetailModal()}
-      <OrderCreation onOrderCreate={handleOrderCreate} />
+      {renderOrderPreviewModal()}
     </div>
   );
 };
