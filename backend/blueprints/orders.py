@@ -304,3 +304,24 @@ def import_orders():
             'error': '处理文件失败',
             'detail': str(e)
         }), 500
+
+@orders_bp.route('/<order_id>/notes', methods=['PUT'])
+@cross_origin()
+def update_order_notes(order_id):
+    """更新订单备注信息（客户备注和内部备注）"""
+    try:
+        order = Order.query.get_or_404(order_id)
+        data = request.get_json() or {}
+
+        # 允许部分更新
+        if 'customer_notes' in data:
+            order.customer_notes = data['customer_notes']
+        if 'internal_notes' in data:
+            order.internal_notes = data['internal_notes']
+
+        order.updated_at = datetime.now()
+        db.session.commit()
+        return jsonify(order.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

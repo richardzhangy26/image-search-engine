@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Image, Select, message, Table, Button, Popconfirm, Space, Input, Upload, DatePicker } from 'antd';
+import { Modal, Image, Select, message, Table, Button, Popconfirm, Space, Input, Upload, DatePicker, Form } from 'antd';
 import { SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import type { TablePaginationConfig, SorterResult, FilterValue, Key } from 'antd/es/table/interface';
 import ExcelJS from 'exceljs';
 import type { Dayjs } from 'dayjs';
+import { updateOrderNotes } from '../services/api';
 
 interface Order {
   id: string;
@@ -77,6 +78,9 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ onEditOrder })
   const [searchText, setSearchText] = useState('');
   const [searchedColumn, setSearchedColumn] = useState('');
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [isEditNotesVisible, setIsEditNotesVisible] = useState(false);
+  const [editCustomerNotes, setEditCustomerNotes] = useState('');
+  const [editInternalNotes, setEditInternalNotes] = useState('');
 
   // 获取订单列表
   const fetchOrders = async (
@@ -500,6 +504,12 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ onEditOrder })
           >
             预览
           </Button>
+          <Button
+            type="link"
+            onClick={() => openEditNotesModal(record)}
+          >
+            编辑备注
+          </Button>
           <Popconfirm
             title="确定要删除这个订单吗？"
             description="删除后将无法恢复！"
@@ -624,6 +634,60 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ onEditOrder })
         }}>
           {previewText}
         </div>
+      </Modal>
+    );
+  };
+
+  // 打开编辑备注 Modal
+  function openEditNotesModal(order: Order) {
+    setSelectedOrder(order);
+    setEditCustomerNotes(order.customer_notes || '');
+    setEditInternalNotes(order.internal_notes || '');
+    setIsEditNotesVisible(true);
+  }
+
+  // 保存备注
+  async function handleSaveNotes() {
+    if (!selectedOrder) return;
+    try {
+      await updateOrderNotes(selectedOrder.id, {
+        customer_notes: editCustomerNotes,
+        internal_notes: editInternalNotes,
+      });
+      message.success('备注已更新');
+      setIsEditNotesVisible(false);
+      // 重新加载订单列表以显示最新数据
+      fetchOrders(pagination.current);
+    } catch (error) {
+      message.error((error as Error).message || '更新失败');
+    }
+  }
+
+  const renderEditNotesModal = () => {
+    if (!selectedOrder) return null;
+    return (
+      <Modal
+        title={`编辑备注 - 订单 ${selectedOrder.id}`}
+        open={isEditNotesVisible}
+        onCancel={() => setIsEditNotesVisible(false)}
+        onOk={handleSaveNotes}
+      >
+        <Form layout="vertical">
+          <Form.Item label="客户备注">
+            <Input.TextArea
+              value={editCustomerNotes}
+              onChange={(e) => setEditCustomerNotes(e.target.value)}
+              rows={3}
+            />
+          </Form.Item>
+          <Form.Item label="内部备注">
+            <Input.TextArea
+              value={editInternalNotes}
+              onChange={(e) => setEditInternalNotes(e.target.value)}
+              rows={3}
+            />
+          </Form.Item>
+        </Form>
       </Modal>
     );
   };
@@ -808,6 +872,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ onEditOrder })
         onChange={handleTableChange}
       />
       {renderOrderPreviewModal()}
+      {renderEditNotesModal()}
     </div>
   );
 };

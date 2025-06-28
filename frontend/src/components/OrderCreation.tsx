@@ -79,10 +79,20 @@ const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreate }) => {
     try {
       const product = await getProductById(tempProductId.trim());
       if (product) {
-        const images = Array.isArray(product.good_img) 
-          ? product.good_img 
-          : (product.good_img ? JSON.parse(product.good_img) : []);
-        const thumbnailUrl = images.length > 0 ? getImageUrl(images[0]) : '';
+        const imagesRaw = Array.isArray(product.good_img)
+          ? (product.good_img as any)
+          : (product.good_img ? JSON.parse(product.good_img as any) : []);
+
+        let firstPath = '';
+        if (imagesRaw.length > 0) {
+          if (typeof imagesRaw[0] === 'string') {
+            firstPath = imagesRaw[0];
+          } else if (imagesRaw[0]?.url) {
+            firstPath = imagesRaw[0].url;
+          }
+        }
+
+        const thumbnailUrl = firstPath ? getImageUrl(firstPath) : '';
 
         setCurrentProduct({
           ...product,

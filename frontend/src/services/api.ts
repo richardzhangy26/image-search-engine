@@ -458,3 +458,24 @@ export const buildVectorIndexSSE = (handlers: BuildVectorIndexHandlers): (() => 
     eventSource.close();
   };
 };
+
+// 更新订单备注信息
+export const updateOrderNotes = async (
+  orderId: number | string,
+  notes: { customer_notes?: string; internal_notes?: string }
+): Promise<any> => {
+  const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}/notes`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(notes),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || '更新订单备注失败');
+  }
+
+  return response.json();
+};
