@@ -79,47 +79,58 @@ def add_product():
         
         # 处理商品图片
         good_images = request.files.getlist('good_images')
-        good_img_urls = []
-        for image in good_images:
-            if image and allowed_file(image.filename):
-                filename = secure_filename(image.filename)
-                # 生成唯一文件名
-                unique_filename = f"{uuid.uuid4()}_{filename}"
-                # 创建按产品ID组织的目录
-                product_good_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', str(product_id))
-                os.makedirs(product_good_dir, exist_ok=True)
-                # 保存文件
-                image_path = os.path.join(product_good_dir, unique_filename)
-                image.save(image_path)
-                # 添加URL到列表
-                good_img_urls.append(f"/uploads/good_images/{product_id}/{unique_filename}")
-        
-        # 更新产品的图片URL
-        product.size_img = json.dumps(size_img_urls)
-        product.good_img = json.dumps(good_img_urls)
+        uploaded_img_objs = []
+        if good_images:
+            for image in good_images:
+                if image and allowed_file(image.filename):
+                    filename = secure_filename(image.filename)
+                    unique_filename = f"{uuid.uuid4()}_{filename}"
+                    # 创建按产品ID组织的目录
+                    product_good_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', str(product_id))
+                    os.makedirs(product_good_dir, exist_ok=True)
+                    image_path = os.path.join(product_good_dir, unique_filename)
+                    image.save(image_path)
+                    uploaded_img_objs.append({
+                        'url': f"/uploads/good_images/{product_id}/{unique_filename}",
+                        'tag': None
+                    })
+
+        # 解析前端传来的 good_img（带标签）
+        existing_img_objs = []
+        try:
+            if 'good_img' in product_data and product_data['good_img']:
+                existing_img_objs = json.loads(product_data['good_img']) if isinstance(product_data['good_img'], str) else product_data['good_img']
+        except Exception as parse_exc:
+            current_app.logger.warning(f"无法解析前端传来的 good_img 字段: {parse_exc}")
+
+        if uploaded_img_objs or existing_img_objs:
+            product.good_img = json.dumps(existing_img_objs + uploaded_img_objs, ensure_ascii=False)
         
         # 更新产品信息
         db.session.commit()
         # 如果配置了向量搜索
         if current_app.config.get('PRODUCT_INDEX'):
             try:
-
                 # 添加到向量索引
                 product_index = current_app.config['PRODUCT_INDEX']
-                if good_img_urls:  # 使用第一张商品图片作为索引
-                    # 更新图片路径，使用新的目录结构
-                   for good_img_url in good_img_urls: 
-                    image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', str(product_id), os.path.basename(good_img_url.split('/')[-1]))
-                    # 创建产品信息对象
-                    feature = product_index.extract_feature(image_path)
-                    product_image = ProductImage(
-                        product_id=product_id,
-                        image_path=good_img_url,
-                        vector=feature
-                    )
-                    db.session.add(product_image)
-                db.session.commit()
-                current_app.logger.info(f"已将产品 {product.id} 添加到向量索引")
+                if existing_img_objs or uploaded_img_objs:  # 使用第一张商品图片作为索引
+                    for good_img_url in existing_img_objs + uploaded_img_objs:
+                        image_path = os.path.join(
+                            current_app.config['UPLOAD_FOLDER'],
+                            'good_images',
+                            str(product_id),
+                            os.path.basename(good_img_url['url'].split('/')[-1])
+                        )
+                        # 创建产品信息对象
+                        feature = product_index.extract_feature(image_path)
+                        product_image = ProductImage(
+                            product_id=product_id,
+                            image_path=good_img_url['url'],
+                            vector=feature
+                        )
+                        db.session.add(product_image)
+                    db.session.commit()
+                    current_app.logger.info(f"已将产品 {product.id} 添加到向量索引")
             except Exception as e:
                 current_app.logger.error(f"添加产品到向量索引时出错: {e}")
         
@@ -164,22 +175,33 @@ def update_product(product_id):
         
         # 处理商品图片
         good_images = request.files.getlist('good_images')
+        uploaded_img_objs: list = []
         if good_images:
-            good_img_urls = []
             for image in good_images:
                 if image and allowed_file(image.filename):
                     filename = secure_filename(image.filename)
-                    # 生成唯一文件名
                     unique_filename = f"{uuid.uuid4()}_{filename}"
-                    # 保存文件
-                    image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', unique_filename)
-                    os.makedirs(os.path.dirname(image_path), exist_ok=True)
+                    # 创建按产品ID组织的目录
+                    product_good_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', str(product_id))
+                    os.makedirs(product_good_dir, exist_ok=True)
+                    image_path = os.path.join(product_good_dir, unique_filename)
                     image.save(image_path)
-                    # 添加URL到列表
-                    good_img_urls.append(f"/uploads/good_images/{unique_filename}")
-            # 只有在有新图片上传时才更新
-            product.good_img = json.dumps(good_img_urls)
+                    uploaded_img_objs.append({
+                        'url': f"/uploads/good_images/{product_id}/{unique_filename}",
+                        'tag': None
+                    })
 
+        # 解析前端传来的 good_img（带标签）
+        existing_img_objs = []
+        try:
+            if 'good_img' in product_data and product_data['good_img']:
+                existing_img_objs = json.loads(product_data['good_img']) if isinstance(product_data['good_img'], str) else product_data['good_img']
+        except Exception as parse_exc:
+            current_app.logger.warning(f"update_product: 无法解析 good_img 字段: {parse_exc}")
+
+        if uploaded_img_objs or existing_img_objs:
+            product.good_img = json.dumps(existing_img_objs + uploaded_img_objs, ensure_ascii=False)
+        
         # 更新其他字段
         for key, value in product_data.items():
             if key not in ['id', 'size_img', 'good_img'] and hasattr(product, key):
@@ -201,7 +223,7 @@ def update_product(product_id):
                 
                 # 更新向量索引
                 product_index = current_app.config['PRODUCT_INDEX']
-                image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', os.path.basename(good_img_urls[0]))
+                image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', os.path.basename(uploaded_img_objs[0]['url'].split('/')[-1]))
                 product_index.add_product(product_info, image_path)
                 
                 current_app.logger.info(f"已更新产品 {product.id} 的向量索引")
@@ -354,7 +376,7 @@ def search_products():
                 # 最终列表已经是按相似度排序的（因为原始列表已排序，且我们按顺序添加）
                 # 如果需要再次确认排序，可以取消下面这行注释，但通常不需要
                 # final_product_list.sort(key=lambda x: x.get('similarity', 0), reverse=True)
-                
+                print(final_product_list)
                 return jsonify(final_product_list)
         
         # 处理文本搜索
@@ -486,8 +508,17 @@ def delete_product_image(product_id, image_filename):
         if product.good_img:
             try:
                 good_images = json.loads(product.good_img)
-                good_images = [img for img in good_images if image_filename not in img]
-                product.good_img = json.dumps(good_images, ensure_ascii=False)
+                filtered_good_images = []
+                for img in good_images:
+                    if isinstance(img, dict):
+                        # 新格式，检查 url 字段
+                        if image_filename not in img.get('url', ''):
+                            filtered_good_images.append(img)
+                    else:
+                        # 旧格式字符串
+                        if image_filename not in img:
+                            filtered_good_images.append(img)
+                product.good_img = json.dumps(filtered_good_images, ensure_ascii=False)
             except json.JSONDecodeError:
                 current_app.logger.error(f"商品 {product_id} 的good_img字段JSON格式错误")
         
@@ -495,8 +526,15 @@ def delete_product_image(product_id, image_filename):
         if product.size_img:
             try:
                 size_images = json.loads(product.size_img)
-                size_images = [img for img in size_images if image_filename not in img]
-                product.size_img = json.dumps(size_images, ensure_ascii=False)
+                filtered_size_images = []
+                for img in size_images:
+                    if isinstance(img, dict):
+                        if image_filename not in img.get('url', ''):
+                            filtered_size_images.append(img)
+                    else:
+                        if image_filename not in img:
+                            filtered_size_images.append(img)
+                product.size_img = json.dumps(filtered_size_images, ensure_ascii=False)
             except json.JSONDecodeError:
                 current_app.logger.error(f"商品 {product_id} 的size_img字段JSON格式错误")
         
@@ -690,12 +728,16 @@ def _add_images_to_vector_index(product_id, good_img_urls):
     product_index = current_app.config['PRODUCT_INDEX']
     images_to_index = []
     try:
-        for web_path in good_img_urls:
+        for item in good_img_urls:
+            # item 可能是字符串或包含 url 键的字典
+            web_path = item['url'] if isinstance(item, dict) else item
+            if not isinstance(web_path, str):
+                continue
             # 从 web_path 重建文件系统路径, 与保存文件时的方式保持一致
             # web_path 示例: "/uploads/good_images/{product_id}/{unique_filename}"
             filename = os.path.basename(web_path)
             filesystem_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'good_images', str(product_id), filename)
-
+            
             if not os.path.exists(filesystem_path):
                 current_app.logger.error(f"Image file not found for vector indexing: {filesystem_path} (derived from web_path: {web_path}) for product {product_id}")
                 continue
@@ -760,7 +802,7 @@ def build_vector_index():
                 try:
                     good_img_urls = parse_list_field(product.good_img)
                     if not good_img_urls:
-                        # 如果产品没有图片URL，也算作“处理”过，但不进行索引
+                        # 如果产品没有图片URL，也算作"处理"过，但不进行索引
                         processed_count += 1
                         yield f"data: {json.dumps({'type': 'progress', 'processed': processed_count, 'total': total_count, 'current_product_id': product.id, 'status': 'skipped_no_images'})}\n\n"
                         continue

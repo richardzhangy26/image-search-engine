@@ -4,6 +4,12 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, SearchOutli
 import { uploadProductCSV, ProductInfo, getProducts, addProduct, updateProduct, deleteProduct, deleteProductImage, API_BASE_URL, buildVectorIndexSSE, batchDeleteProductsAPI } from '../services/api';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 
+// Add interface for image with tag
+interface ImageWithTag {
+  url: string;
+  tag?: '尺码图' | '上身图' | '实物图';
+}
+
 export const ProductUpload: React.FC = () => {
   const [products, setProducts] = useState<ProductInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -17,11 +23,12 @@ export const ProductUpload: React.FC = () => {
   const [searchName, setSearchName] = useState('');
   const [searchId, setSearchId] = useState('');
   const [filteredInfo, setFilteredInfo] = useState<Record<string, string[] | null>>({});
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]); // 新增: 用于存储选中的行
-  const [batchDeleteLoading, setBatchDeleteLoading] = useState(false); // 新增: 批量删除按钮加载状态
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
   const [progressPercent, setProgressPercent] = useState<number>(0);
   const [progressMessage, setProgressMessage] = useState<string>('');
   const [showProgress, setShowProgress] = useState<boolean>(false);
+  const [imageTags, setImageTags] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchProducts();
@@ -50,17 +57,37 @@ export const ProductUpload: React.FC = () => {
         
         const { good_img, ...productData } = values;
         
-        formData.append('product', JSON.stringify(productData));
-        // 添加图片文件或路径
+        // Process images with tags
+        const imagesWithTags: ImageWithTag[] = [];
+        values.good_img?.forEach((file: UploadFile, index: number) => {
+          if (file.response || file.url) {
+            const imagePath = file.response || file.url?.replace(API_BASE_URL, '');
+            const tag = imageTags[file.uid];
+            imagesWithTags.push({
+              url: imagePath,
+              tag: tag as '尺码图' | '上身图' | '实物图' | undefined
+            });
+          }
+        });
+        
+        // Include images with tags in product data
+        const productDataWithTags = {
+          ...productData,
+          good_img: JSON.stringify(imagesWithTags)
+        };
+        
+        formData.append('product', JSON.stringify(productDataWithTags));
+        
+        // 添加图片文件
         goodImgFiles.forEach((file: File | string) => {
           if (typeof file === 'string') {
-            formData.append('good_images_exist', file); // 你后端需要支持这个字段
-          } else {
+            formData.append('good_images_exist', file);
+          } else if (file) {
             formData.append('good_images', file);
           }
         });
 
-        if (editingProduct) {
+        if (editingProduct && editingProduct.id) {
           await updateProduct(editingProduct.id, formData);
           message.success('产品更新成功');
         } else {
@@ -69,6 +96,7 @@ export const ProductUpload: React.FC = () => {
         }
         setIsModalVisible(false);
         form.resetFields();
+        setImageTags({}); // Clear image tags
         fetchProducts();
       } catch (err) {
         message.error(err instanceof Error ? err.message : '操作失败');
@@ -78,7 +106,11 @@ export const ProductUpload: React.FC = () => {
     });
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string | undefined) => {
+    if (!id) {
+      message.error('产品ID不存在');
+      return;
+    }
     try {
       await deleteProduct(id);
       message.success('产品删除成功');
@@ -92,19 +124,47 @@ export const ProductUpload: React.FC = () => {
     setEditingProduct(product || null);
     if (product) {
       // 编辑模式，回填图片
-      let goodImgList = [];
+      let goodImgList: UploadFile[] = [];
+      const tagsMap: Record<string, string> = {};
+      
       try {
-        const imgs = Array.isArray(product.good_img)
+        const imagesRaw = Array.isArray(product.good_img)
           ? product.good_img
           : (product.good_img ? JSON.parse(product.good_img as string) : []);
-        goodImgList = imgs.map((url: string, idx: number) => ({
-          uid: `good_img_${idx}`,
-          name: url.split('/').pop(),
-          status: 'done',
-          url: `${API_BASE_URL}${url}`,
-          response: url,
-        }));
-      } catch (e) {}
+        
+        // Check if it's the old format (array of strings) or new format (array of objects)
+        if (Array.isArray(imagesRaw)) {
+          goodImgList = imagesRaw.map((item: string | ImageWithTag, idx: number) => {
+            if (typeof item === 'string') {
+              // Old format: just a URL string
+              return {
+                uid: `good_img_${idx}`,
+                name: item.split('/').pop() || '',
+                status: 'done',
+                url: `${API_BASE_URL}${item}`,
+                response: item,
+              };
+            } else {
+              // New format: object with url and tag
+              const uid = `good_img_${idx}`;
+              if (item.tag) {
+                tagsMap[uid] = item.tag;
+              }
+              return {
+                uid,
+                name: item.url.split('/').pop() || '',
+                status: 'done',
+                url: `${API_BASE_URL}${item.url}`,
+                response: item.url,
+              };
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Error parsing good_img:', e);
+      }
+      
+      setImageTags(tagsMap);
       form.setFieldsValue({
         ...product,
         good_img: goodImgList,
@@ -115,6 +175,7 @@ export const ProductUpload: React.FC = () => {
       form.setFieldsValue({
         good_img: [],
       });
+      setImageTags({});
     }
     setIsModalVisible(true);
   };
@@ -153,10 +214,10 @@ export const ProductUpload: React.FC = () => {
         setProgressPercent(percent);
         setProgressMessage(`正在处理: ${processed} / ${total} (产品ID: ${currentProductId}, 状态: ${status})`);
       },
-      onComplete: (message, errors) => {
-        setProgressMessage(message || '向量索引构建完成！');
+      onComplete: (completeMessage, errors) => {
+        setProgressMessage(completeMessage || '向量索引构建完成！');
         setProgressPercent(100);
-        message.success(message || '向量索引构建完成！');
+        message.success(completeMessage || '向量索引构建完成！');
         if (errors && errors.length > 0) {
           errors.forEach((err) => message.error(err, 10));
         }
@@ -253,7 +314,10 @@ export const ProductUpload: React.FC = () => {
         </div>
       ),
       filterIcon: (filtered: boolean) => <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
-      onFilter: (value: string, record: ProductInfo) => record.id?.toString().toLowerCase().includes(value.toLowerCase()),
+      onFilter: (value: boolean | React.Key, record: ProductInfo) => {
+        const searchValue = String(value).toLowerCase();
+        return !!record.id?.toString().toLowerCase().includes(searchValue);
+      },
     },
     {
       title: '商品名称',
@@ -300,7 +364,10 @@ export const ProductUpload: React.FC = () => {
         </div>
       ),
       filterIcon: (filtered: boolean) => <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
-      onFilter: (value: string, record: ProductInfo) => record.name?.toString().toLowerCase().includes(value.toLowerCase()),
+      onFilter: (value: boolean | React.Key, record: ProductInfo) => {
+        const searchValue = String(value).toLowerCase();
+        return !!record.name?.toString().toLowerCase().includes(searchValue);
+      },
     },
     {
       title: '尺码',
@@ -319,19 +386,32 @@ export const ProductUpload: React.FC = () => {
       render: (good_img: string | string[]) => {
         if (!good_img) return <span>无图片</span>;
         
-        const images = Array.isArray(good_img) ? good_img : JSON.parse(good_img as string);
-        if (!images || images.length === 0) return <span>无图片</span>;
-        
-        const firstImage = images[0];
-        return (
-          <Image
-            src={`${API_BASE_URL}${firstImage}`}
-            alt="商品图片"
-            width={80}
-            height={80}
-            style={{ objectFit: 'cover' }}
-          />
-        );
+        try {
+          const imagesRaw = Array.isArray(good_img) ? good_img : JSON.parse(good_img as string);
+          if (!imagesRaw || imagesRaw.length === 0) return <span>无图片</span>;
+          
+          // Handle both old format (array of strings) and new format (array of objects)
+          let firstPath = '';
+          if (imagesRaw.length > 0) {
+            if (typeof imagesRaw[0] === 'string') firstPath = imagesRaw[0];
+            else if (imagesRaw[0]?.url) firstPath = imagesRaw[0].url;
+          }
+          
+          const thumbnailUrl = firstPath ? `${API_BASE_URL}${firstPath}` : '';
+          
+          return (
+            <Image
+              src={thumbnailUrl}
+              alt="商品图片"
+              width={80}
+              height={80}
+              style={{ objectFit: 'cover' }}
+            />
+          );
+        } catch (e) {
+          console.error('Error parsing good_img:', e);
+          return <span>无图片</span>;
+        }
       },
     },
     {
@@ -344,7 +424,7 @@ export const ProductUpload: React.FC = () => {
         { text: '预售', value: 'pre_sale' },
       ],
       filteredValue: filteredInfo.sales_status || null,
-      onFilter: (value: string, record: ProductInfo) => record.sales_status === value,
+      onFilter: (value: boolean | React.Key, record: ProductInfo) => record.sales_status === String(value),
       render: (text: string, record: ProductInfo) => (
         <Select
           defaultValue={text || 'on_sale'}
@@ -392,12 +472,14 @@ export const ProductUpload: React.FC = () => {
       title: '工厂名称',
       dataIndex: 'factory_name',
       key: 'factory_name',
-      filters: Array.from(new Set(products.map(p => p.factory_name).filter(Boolean))).map(name => ({
-        text: name,
-        value: name,
-      })),
+      filters: Array.from(new Set(products.map(p => p.factory_name).filter(Boolean)))
+        .filter((name): name is string => name !== undefined)
+        .map(name => ({
+          text: name,
+          value: name,
+        })),
       filteredValue: filteredInfo.factory_name || null,
-      onFilter: (value: string, record: ProductInfo) => record.factory_name === value,
+      onFilter: (value: boolean | React.Key, record: ProductInfo) => record.factory_name === String(value),
     },
     {
       title: '操作',
@@ -617,6 +699,7 @@ export const ProductUpload: React.FC = () => {
               }
               return e?.fileList;
             }}
+            style={{ marginBottom: 40 }}
           >
             <Upload
               listType="picture-card"
@@ -634,6 +717,37 @@ export const ProductUpload: React.FC = () => {
                 return false; // 阻止默认删除行为
               }}
               defaultFileList={form.getFieldValue('good_img')}
+              itemRender={(originNode, file, fileList, actions) => {
+                return (
+                  <div style={{ position: 'relative' }}>
+                    {originNode}
+                    <Select
+                      size="small"
+                      placeholder="选择标签"
+                      value={imageTags[file.uid]}
+                      onChange={(value) => {
+                        setImageTags(prev => ({
+                          ...prev,
+                          [file.uid]: value
+                        }));
+                      }}
+                      style={{ 
+                        position: 'absolute', 
+                        bottom: -30, 
+                        left: 0, 
+                        right: 0,
+                        width: '100%',
+                        zIndex: 10
+                      }}
+                      allowClear
+                    >
+                      <Select.Option value="尺码图">尺码图</Select.Option>
+                      <Select.Option value="上身图">上身图</Select.Option>
+                      <Select.Option value="实物图">实物图</Select.Option>
+                    </Select>
+                  </div>
+                );
+              }}
             >
               <div>
                 <PlusOutlined />

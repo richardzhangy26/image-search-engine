@@ -104,9 +104,9 @@ export const ProductSearch: React.FC = () => {
     
     try {
       console.log('发送搜索请求到:', `${API_BASE_URL}/api/products/search`);
-      const results = await searchProducts(searchImage);
-      console.log('搜索结果:', results); 
-      setResults(results);
+      const searchRes = await searchProducts(searchImage);
+      console.log('搜索结果:', searchRes);
+      setResults(searchRes);
     } catch (err) {
       console.error('搜索错误:', err); 
       setError(err instanceof Error ? err.message : '搜索失败');
@@ -301,7 +301,7 @@ export const ProductSearch: React.FC = () => {
                   相似度: {(result.similarity * 100).toFixed(2)}%
                 </p>
                 <p className="text-lg font-bold text-blue-600">
-                  ¥{result.price.toFixed(2)}
+                  {typeof result.price === 'number' ? `¥${result.price.toFixed(2)}` : '价格未知'}
                 </p>
                 <div className="mt-3 text-sm text-blue-600 font-medium">
                   查看详情 →
@@ -318,34 +318,43 @@ export const ProductSearch: React.FC = () => {
             <div>
               <h3 className="text-xl font-bold mb-4">商品图片</h3>
               <div className="grid grid-cols-2 gap-2">
-                {product.good_img && (
-                  Array.isArray(product.good_img) 
-                    ? product.good_img 
-                    : JSON.parse(product.good_img)
-                ).map((img, index) => (
-                  <Image
-                    key={index}
-                    src={`${API_BASE_URL}${img}`}
-                    alt={`商品图片 ${index + 1}`}
-                    style={{ width: '100%', height: 'auto' }}
-                  />
-                ))}
+                {product.good_img && (() => {
+                  const raw = Array.isArray(product.good_img)
+                    ? (product.good_img as (string | { url: string })[])
+                    : (product.good_img ? JSON.parse(product.good_img as string) : []);
+                  return (raw as (string | { url: string })[]).map((img: string | { url: string }, index: number) => {
+                    const path = typeof img === 'string' ? img : img.url;
+                    return (
+                      <Image
+                        key={index}
+                        src={`${API_BASE_URL}${path}`}
+                        alt={`商品图片 ${index + 1}`}
+                        style={{ width: '100%', height: 'auto' }}
+                      />
+                    );
+                  });
+                })()}
               </div>
               {product.size_img && (
                 <>
                   <h3 className="text-xl font-bold my-4">尺码图片</h3>
                   <div className="grid grid-cols-2 gap-2">
-                    {(Array.isArray(product.size_img) 
-                      ? product.size_img 
-                      : JSON.parse(product.size_img)
-                    ).map((img, index) => (
-                      <Image
-                        key={index}
-                        src={`${API_BASE_URL}${img}`}
-                        alt={`尺码图片 ${index + 1}`}
-                        style={{ width: '100%', height: 'auto' }}
-                      />
-                    ))}
+                    {(() => {
+                      const sizeRaw = Array.isArray(product.size_img)
+                        ? (product.size_img as (string | { url: string })[])
+                        : (product.size_img ? JSON.parse(product.size_img as string) : []);
+                      return (sizeRaw as (string | { url: string })[]).map((img: string | { url: string }, index: number) => {
+                        const path = typeof img === 'string' ? img : img.url;
+                        return (
+                          <Image
+                            key={index}
+                            src={`${API_BASE_URL}${path}`}
+                            alt={`尺码图片 ${index + 1}`}
+                            style={{ width: '100%', height: 'auto' }}
+                          />
+                        );
+                      });
+                    })()}
                   </div>
                 </>
               )}
