@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, message, Space, Popconfirm } from 'antd';
+import { Table, Button, Modal, Form, Input, message, Space, Popconfirm, List } from 'antd';
 import { DeleteOutlined, EditOutlined, CopyOutlined } from '@ant-design/icons';
 import AddressParser from './AddressParser';
 import { API_BASE_URL } from '../services/api';
@@ -26,6 +26,8 @@ const CustomerManagement: React.FC = () => {
   const [nameFilter, setNameFilter] = useState('');
   const [phoneFilter, setPhoneFilter] = useState('');
   const [sortOrder, setSortOrder] = useState<'ascend' | 'descend' | null>(null);
+  const [balanceInfo, setBalanceInfo] = useState<{ balance: number; transactions: any[] }>({ balance: 0, transactions: [] });
+  const [transactionForm] = Form.useForm();
 
   const fetchCustomers = async (name?: string, phone?: string, order?: string) => {
     try {
@@ -208,6 +210,12 @@ const CustomerManagement: React.FC = () => {
     setSelectedCustomer(customer);
     updateForm.setFieldsValue(customer);
     setIsUpdateModalVisible(true);
+
+    // 获取余额与交易记录
+    fetch(`${API_BASE_URL}/api/customers/${customer.id}/balance`)
+      .then(res => res.json())
+      .then(data => setBalanceInfo(data))
+      .catch(() => {});
   };
 
   const columns = [
@@ -468,6 +476,48 @@ const CustomerManagement: React.FC = () => {
             <Button type="primary" htmlType="submit" block>
               提交
             </Button>
+          </Form.Item>
+        </Form>
+
+        {/* 余额信息展示 */}
+        <h3>余额: ￥{balanceInfo.balance.toFixed(2)}</h3>
+        <List
+          size="small"
+          bordered
+          dataSource={balanceInfo.transactions}
+          renderItem={(item: any, index) => (
+            <List.Item>
+              {index + 1}. ￥{item.amount} 备注: {item.note || '—'}
+            </List.Item>
+          )}
+          style={{ marginBottom: 16, maxHeight: 200, overflowY: 'auto' }}
+        />
+
+        {/* 添加充值/消费 */}
+        <Form form={transactionForm} layout="inline" onFinish={async (values) => {
+          if (!selectedCustomer) return;
+          try {
+            const res = await fetch(`${API_BASE_URL}/api/customers/${selectedCustomer.id}/balance`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(values),
+            });
+            if (!res.ok) throw new Error('failed');
+            const data = await res.json();
+            setBalanceInfo(prev => ({ ...prev, balance: data.balance, transactions: [data.transaction, ...prev.transactions] }));
+            transactionForm.resetFields();
+          } catch (err) {
+            message.error('操作失败');
+          }
+        }}>
+          <Form.Item name="amount" rules={[{ required: true, message: '请输入金额' }]}>
+            <Input placeholder="金额(正数充值,负数消费)" style={{ width: 180 }} />
+          </Form.Item>
+          <Form.Item name="note">
+            <Input placeholder="备注" style={{ width: 180 }} />
+          </Form.Item>
+          <Form.Item>
+            <Button type="primary" htmlType="submit">保存</Button>
           </Form.Item>
         </Form>
       </Modal>

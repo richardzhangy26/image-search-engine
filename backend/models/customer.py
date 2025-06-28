@@ -13,6 +13,9 @@ class Customer(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
+    # 余额信息
+    balance = db.Column(db.DECIMAL(10, 2), default=0, nullable=False, comment='客户余额')
+
     # Relationship to Orders
     orders = db.relationship('Order', backref='customer', lazy=True)
 
@@ -28,5 +31,6 @@ class Customer(db.Model):
             'default_address': self.default_address,
             'address_history': self.address_history or [],
             'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat()
+            'updated_at': self.updated_at.isoformat(),
+            'balance': float(self.balance) if self.balance is not None else 0.0
         }

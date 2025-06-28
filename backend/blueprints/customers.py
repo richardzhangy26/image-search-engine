@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_cors import cross_origin
-from models import db, Customer
+from models import db, Customer, BalanceTransaction
 from pypinyin import lazy_pinyin
 import re
 import os
@@ -202,3 +202,69 @@ def add_customer_address(customer_id):
     
     db.session.commit()
     return jsonify(customer.to_dict()), 200
+
+# ------------------------------
+# 余额管理接口
+# ------------------------------
+
+@customers_bp.route('/<int:customer_id>/balance', methods=['GET', 'OPTIONS'])
+@cross_origin()
+def get_customer_balance(customer_id):
+    """获取客户余额及其交易记录"""
+    customer = Customer.query.get_or_404(customer_id)
+
+    # 查询交易记录，按时间倒序
+    transactions = BalanceTransaction.query.filter_by(customer_id=customer_id).order_by(BalanceTransaction.created_at.desc()).all()
+    balance_value = float(customer.balance) if customer.balance is not None else 0.0
+    return jsonify({
+        'balance': balance_value,
+        'transactions': [t.to_dict() for t in transactions]
+    }), 200
+
+@customers_bp.route('/<int:customer_id>/balance', methods=['POST', 'OPTIONS'])
+@cross_origin()
+def add_customer_balance_transaction(customer_id):
+    """为客户添加充值或消费记录，并更新余额
+
+    请求体示例：
+    {
+        "amount": 100.5,      # 正数为充值，负数为消费
+        "note": "备注信息"
+    }
+    """
+    customer = Customer.query.get_or_404(customer_id)
+    data = request.get_json() or {}
+
+    # 校验金额
+    try:
+        amount = float(data.get('amount', 0))
+    except (TypeError, ValueError):
+        return jsonify({'error': '金额格式错误'}), 400
+
+    if amount == 0:
+        return jsonify({'error': '金额不能为0'}), 400
+
+    note = data.get('note', '')
+
+    try:
+        # 创建交易记录
+        transaction = BalanceTransaction(
+            customer_id=customer_id,
+            amount=amount,
+            note=note
+        )
+        db.session.add(transaction)
+
+        # 更新客户余额
+        new_balance = (customer.balance or 0) + amount
+        customer.balance = new_balance
+
+        db.session.commit()
+        return jsonify({
+            'message': '交易记录已添加',
+            'balance': float(customer.balance),
+            'transaction': transaction.to_dict()
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
