@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, InputNumber, message, Popconfirm, Upload, Image, Select, Progress } from 'antd';
+import { Table, Button, Modal, Form, Input, InputNumber, message, Popconfirm, Upload, Image, Select, Progress, AutoComplete } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, SearchOutlined, LoadingOutlined } from '@ant-design/icons';
 import { uploadProductCSV, ProductInfo, getProducts, addProduct, updateProduct, deleteProduct, deleteProductImage, API_BASE_URL, buildVectorIndexSSE, batchDeleteProductsAPI } from '../services/api';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
@@ -29,6 +29,36 @@ export const ProductUpload: React.FC = () => {
   const [progressMessage, setProgressMessage] = useState<string>('');
   const [showProgress, setShowProgress] = useState<boolean>(false);
   const [imageTags, setImageTags] = useState<Record<string, string>>({});
+  const [factoryNames, setFactoryNames] = useState<string[]>([]);
+
+  // Inject custom styles for Upload thumbnails to keep uniform size and tidy layout
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.innerHTML = `
+      /* Uniform size for each picture-card item */
+      .ant-upload-list-picture-card .ant-upload-list-item {
+        width: 120px !important;
+        height: 120px !important;
+        margin: 0 8px 8px 0 !important;
+      }
+      /* Ensure thumbnails fill the item box nicely */
+      .ant-upload-list-picture-card .ant-upload-list-item-thumbnail img {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+      }
+      /* Better wrapping layout with consistent gaps */
+      .ant-upload-list-picture-card-container {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
 
   useEffect(() => {
     fetchProducts();
@@ -39,6 +69,13 @@ export const ProductUpload: React.FC = () => {
     try {
       const data = await getProducts();
       setProducts(data);
+      
+      // 提取所有唯一的工厂名称
+      const uniqueFactoryNames = Array.from(
+        new Set(data.map(p => p.factory_name).filter(Boolean))
+      ).filter((name): name is string => name !== undefined);
+      
+      setFactoryNames(uniqueFactoryNames);
     } catch (err) {
       message.error('获取产品列表失败');
     } finally {
@@ -643,7 +680,14 @@ export const ProductUpload: React.FC = () => {
               <Input />
             </Form.Item>
             <Form.Item name="factory_name" label="工厂名称">
-              <Input />
+              <AutoComplete
+                placeholder="选择或输入工厂名称"
+                allowClear
+                options={factoryNames.map(name => ({ value: name, label: name }))}
+                filterOption={(input, option) =>
+                  String(option?.label || '').toLowerCase().includes(input.toLowerCase())
+                }
+              />
             </Form.Item>
             <Form.Item name="sales_status" label="销售状态" initialValue="on_sale">
               <Select>
