@@ -256,7 +256,9 @@ def add_customer_balance_transaction(customer_id):
         db.session.add(transaction)
 
         # 更新客户余额
-        new_balance = (customer.balance or 0) + amount
+        from decimal import Decimal
+        current_balance = customer.balance or Decimal('0')
+        new_balance = current_balance + Decimal(str(amount))
         customer.balance = new_balance
 
         db.session.commit()
@@ -265,6 +267,42 @@ def add_customer_balance_transaction(customer_id):
             'balance': float(customer.balance),
             'transaction': transaction.to_dict()
         }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@customers_bp.route('/<int:customer_id>/balance/<int:transaction_id>', methods=['DELETE', 'OPTIONS'])
+@cross_origin()
+def delete_customer_balance_transaction(customer_id, transaction_id):
+    """删除客户的某条余额交易记录，并更新余额"""
+    customer = Customer.query.get_or_404(customer_id)
+    transaction = BalanceTransaction.query.filter_by(id=transaction_id, customer_id=customer_id).first_or_404()
+    
+    try:
+        # 记录要删除的金额
+        deleted_amount = transaction.amount
+        
+        # 删除交易记录
+        db.session.delete(transaction)
+        
+        # 更新客户余额（减去删除的交易金额）
+        from decimal import Decimal
+        current_balance = customer.balance or Decimal('0')
+        new_balance = current_balance - Decimal(str(deleted_amount))
+        customer.balance = new_balance
+        
+        db.session.commit()
+        
+        # 重新查询交易记录返回
+        transactions = BalanceTransaction.query.filter_by(customer_id=customer_id).order_by(BalanceTransaction.created_at.desc()).all()
+        
+        return jsonify({
+            'message': '交易记录已删除',
+            'balance': float(customer.balance),
+            'transactions': [t.to_dict() for t in transactions]
+        }), 200
+    
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500

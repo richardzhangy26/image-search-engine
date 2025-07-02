@@ -486,7 +486,35 @@ const CustomerManagement: React.FC = () => {
           bordered
           dataSource={balanceInfo.transactions}
           renderItem={(item: any, index) => (
-            <List.Item>
+            <List.Item
+              actions={[
+                <Button 
+                  type="link" 
+                  danger 
+                  size="small"
+                  onClick={async () => {
+                    if (!selectedCustomer) return;
+                    try {
+                      const res = await fetch(`${API_BASE_URL}/api/customers/${selectedCustomer.id}/balance/${item.id}`, {
+                        method: 'DELETE',
+                      });
+                      if (!res.ok) throw new Error('failed');
+                      const data = await res.json();
+                      setBalanceInfo(prev => ({ 
+                        ...prev, 
+                        balance: data.balance, 
+                        transactions: data.transactions 
+                      }));
+                      message.success('删除成功');
+                    } catch (err) {
+                      message.error('删除失败');
+                    }
+                  }}
+                >
+                  删除
+                </Button>
+              ]}
+            >
               {index + 1}. ￥{item.amount} 备注: {item.note || '—'}
             </List.Item>
           )}

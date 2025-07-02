@@ -291,20 +291,39 @@ export const ProductSearch: React.FC = () => {
             {results.map((result) => (
               <div 
                 key={result.id}
-                className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 p-4 cursor-pointer"
+                className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer"
                 onClick={() => window.open(`/product/${result.id}`, '_blank')}
               >
-                <p className="text-sm text-gray-700 mb-1">
-                  产品ID: {result.id}
-                </p>
-                <p className="text-sm text-gray-600 mb-2">
-                  相似度: {(result.similarity * 100).toFixed(2)}%
-                </p>
-                <p className="text-lg font-bold text-blue-600">
-                  {typeof result.price === 'number' ? `¥${result.price.toFixed(2)}` : '价格未知'}
-                </p>
-                <div className="mt-3 text-sm text-blue-600 font-medium">
-                  查看详情 →
+                <div className="w-full h-48 bg-gray-100 flex items-center justify-center">
+                  <img
+                    src={getImageUrl(result.image_path)}
+                    alt={result.image_path ? `缩略图 ${result.id}` : '缩略图'}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                </div>
+                {/* 信息部分 */}
+                <div className="p-4">
+                  <p className="text-sm text-gray-700 mb-1">
+                    产品ID: {result.id}
+                  </p>
+                  <p className="text-sm text-gray-600 mb-2">
+                    相似度: {(result.similarity * 100).toFixed(2)}%
+                  </p>
+                  <p className="text-lg font-bold text-blue-600">
+                    {typeof result.price === 'number' ? `¥${result.price.toFixed(2)}` : '价格未知'}
+                  </p>
+                  <div className="mt-3 flex items-center justify-between">
+                    {/* 小缩略图 */}
+                    {(result.image_path) && (
+                      <img
+                        src={getImageUrl(result.image_path)}
+                        alt={result.image_path ? `缩略图 ${result.id}` : '缩略图'}
+                        className="w-8 h-8 object-cover rounded mr-2 border border-gray-200"
+                      />
+                    )}
+
+                    <span className="text-sm text-blue-600 font-medium">查看详情 →</span>
+                  </div>
                 </div>
               </div>
             ))}
