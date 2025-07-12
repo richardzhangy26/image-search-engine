@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { Modal, Button } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { Button } from 'antd';
+import { PlusOutlined, DownOutlined } from '@ant-design/icons';
 import { ProductUpload } from './components/ProductUpload';
 import { ProductSearch } from './components/ProductSearch';
 import ProductDetails from './components/ProductDetails';
 import OrderManagement from './components/OrderManagement';
 import CustomerManagement from './components/CustomerManagement';
 import OrderCreation from './components/OrderCreation';
+import AIVirtualTryOn from './components/AIVirtualTryOn';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'search' | 'upload' | 'orders' | 'customers'>('search');
+  const [activeTab, setActiveTab] = useState<'search' | 'upload' | 'orders' | 'customers' | 'virtualTryOn'>('search');
   const [isOrderCreationVisible, setIsOrderCreationVisible] = useState(false);
   const [editingOrder, setEditingOrder] = useState<any>(null);
 
@@ -29,18 +30,31 @@ function App() {
     setIsOrderCreationVisible(true);
   };
 
-  const handleCloseModal = () => {
-    setIsOrderCreationVisible(false);
-    setEditingOrder(null);
-  };
-
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow">
-        <div className="max-w-full mx-auto py-6 px-4">
+        <div className="max-w-full mx-auto py-6 px-4 flex justify-between items-center">
           <h1 className="text-3xl font-bold text-gray-900">商品图像搜索系统</h1>
+          <Button
+            type="primary"
+            onClick={() => setIsOrderCreationVisible(!isOrderCreationVisible)}
+            icon={<PlusOutlined />}
+            style={{ marginLeft: '16px' }}
+          >
+            {isOrderCreationVisible ? '收起订单' : '创建订单'}
+            <DownOutlined style={{ transform: isOrderCreationVisible ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }} />
+          </Button>
         </div>
       </header>
+
+      {/* 订单创建下拉区域 */}
+      {isOrderCreationVisible && (
+        <div className="bg-white shadow-lg border-b">
+          <div className="max-w-full mx-auto px-4 py-4">
+            <OrderCreation onOrderCreate={handleOrderCreate} editingOrder={editingOrder} />
+          </div>
+        </div>
+      )}
 
       <Routes>
         <Route path="/product/:id" element={<ProductDetails />} />
@@ -59,7 +73,7 @@ function App() {
                           activeTab === 'search'
                             ? 'border-blue-500 text-blue-600'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        } w-1/4 py-4 px-1 text-center border-b-2 font-medium`}
+                        } w-1/5 py-4 px-1 text-center border-b-2 font-medium`}
                       >
                         搜索商品
                       </button>
@@ -69,9 +83,19 @@ function App() {
                           activeTab === 'upload'
                             ? 'border-blue-500 text-blue-600'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        } w-1/4 py-4 px-1 text-center border-b-2 font-medium`}
+                        } w-1/5 py-4 px-1 text-center border-b-2 font-medium`}
                       >
                         添加商品
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('virtualTryOn')}
+                        className={`${
+                          activeTab === 'virtualTryOn'
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        } w-1/5 py-4 px-1 text-center border-b-2 font-medium`}
+                      >
+                        AI试衣
                       </button>
                       <button
                         onClick={() => setActiveTab('orders')}
@@ -79,7 +103,7 @@ function App() {
                           activeTab === 'orders'
                             ? 'border-blue-500 text-blue-600'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        } w-1/4 py-4 px-1 text-center border-b-2 font-medium`}
+                        } w-1/5 py-4 px-1 text-center border-b-2 font-medium`}
                       >
                         查看订单
                       </button>
@@ -89,7 +113,7 @@ function App() {
                           activeTab === 'customers'
                             ? 'border-blue-500 text-blue-600'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        } w-1/4 py-4 px-1 text-center border-b-2 font-medium`}
+                        } w-1/5 py-4 px-1 text-center border-b-2 font-medium`}
                       >
                         查看客户
                       </button>
@@ -100,6 +124,7 @@ function App() {
                 <div className="bg-white shadow rounded-lg">
                   {activeTab === 'search' && <ProductSearch />}
                   {activeTab === 'upload' && <ProductUpload />}
+                  {activeTab === 'virtualTryOn' && <AIVirtualTryOn />}
                   {activeTab === 'orders' && <OrderManagement />}
                   {activeTab === 'customers' && <CustomerManagement />}
                 </div>
@@ -110,38 +135,6 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* 全局浮动按钮 */}
-      <Button
-        type="primary"
-        shape="circle"
-        size="large"
-        icon={<PlusOutlined />}
-        onClick={() => setIsOrderCreationVisible(true)}
-        style={{
-          position: 'fixed',
-          bottom: '24px',
-          right: '24px',
-          width: '56px',
-          height: '56px',
-          fontSize: '20px',
-          zIndex: 1000,
-          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
-        }}
-        title="添加新订单"
-      />
-
-      {/* 全局订单创建/编辑弹窗 */}
-      <Modal
-        title={editingOrder ? "编辑订单" : "添加新订单"}
-        open={isOrderCreationVisible}
-        onCancel={handleCloseModal}
-        footer={null}
-        width={800}
-        style={{ top: 20 }}
-        bodyStyle={{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}
-      >
-        <OrderCreation onOrderCreate={handleOrderCreate} editingOrder={editingOrder} />
-      </Modal>
     </div>
   );
 }
