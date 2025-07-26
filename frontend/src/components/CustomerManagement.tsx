@@ -469,8 +469,11 @@ const CustomerManagement: React.FC = () => {
           <Form.Item
             name="phone"
             label="电话"
+            rules={[
+              { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的11位手机号码' }
+            ]}
           >
-            <Input />
+            <Input maxLength={11} placeholder="请输入11位手机号码" />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" block>
