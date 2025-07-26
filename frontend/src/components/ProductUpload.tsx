@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Table, Button, Modal, Form, Input, InputNumber, message, Popconfirm, Upload, Image, Select, Progress, AutoComplete } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, SearchOutlined, LoadingOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, SearchOutlined, LoadingOutlined, ReloadOutlined } from '@ant-design/icons';
 import { uploadProductCSV, ProductInfo, getProducts, addProduct, updateProduct, deleteProduct, deleteProductImage, API_BASE_URL, buildVectorIndexSSE, batchDeleteProductsAPI } from '../services/api';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 
@@ -604,6 +604,14 @@ export const ProductUpload: React.FC = () => {
             loading={indexingLoading}
           >
             构建向量索引
+          </Button>
+          <Button
+            type="default"
+            icon={<ReloadOutlined />}
+            onClick={() => fetchProducts()}
+            loading={loading}
+          >
+            刷新列表
           </Button>
           {showProgress && (
             <div style={{ marginTop: '16px' }}>
