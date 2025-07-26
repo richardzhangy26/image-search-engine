@@ -211,7 +211,8 @@ export const searchProducts = async (
       throw new Error(errorMessage);
     }
 
-    return await response.json();
+    const data = await response.json();
+    return data.results || data;
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
       throw new Error(`网络连接失败 - 无法连接到后端搜索服务 (${API_BASE_URL}/api/products/search)`);
@@ -475,6 +476,159 @@ export const updateOrderNotes = async (
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || '更新订单备注失败');
+  }
+
+  return response.json();
+};
+
+// AI虚拟试衣相关接口
+export interface VirtualTryOnRequest {
+  modelImage: File;
+  topClothing?: File;
+  bottomClothing?: File;
+}
+
+export interface VirtualTryOnResponse {
+  success: boolean;
+  message?: string;
+  result_image_url?: string;
+  task_id?: string;
+  error?: string;
+  details?: any;
+}
+
+// AI虚拟试衣
+export const performVirtualTryOn = async (
+  request: VirtualTryOnRequest
+): Promise<VirtualTryOnResponse> => {
+  const formData = new FormData();
+  formData.append('model_image', request.modelImage);
+  
+  if (request.topClothing) {
+    formData.append('top_clothing', request.topClothing);
+  }
+  
+  if (request.bottomClothing) {
+    formData.append('bottom_clothing', request.bottomClothing);
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/virtual-try-on`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'AI试衣失败');
+  }
+
+  return response.json();
+};
+
+// 获取试衣任务状态
+export const getVirtualTryOnStatus = async (taskId: string): Promise<any> => {
+  const response = await fetch(`${API_BASE_URL}/api/virtual-try-on/status/${taskId}`, {
+    method: 'GET',
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || '获取试衣状态失败');
+  }
+
+  return response.json();
+};
+
+// ---------------- 文件哈希计算 ----------------
+export const calculateFileHash = async (file: File): Promise<string> => {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex;
+};
+
+// 检查文件哈希是否已存在
+export const checkFileHash = async (fileHash: string): Promise<{
+  exists: boolean;
+  url?: string;
+  path?: string;
+  filename?: string;
+  file_hash?: string;
+}> => {
+  const response = await fetch(`${API_BASE_URL}/api/oss/check-hash`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ file_hash: fileHash }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || '检查文件哈希失败');
+  }
+
+  return response.json();
+};
+
+// ---------------- 图片上传到OSS（带去重功能） ----------------
+export const uploadImageToOSS = async (file: File, folder: string = 'virtual-try-on'): Promise<string> => {
+  try {
+    // 1. 计算文件哈希
+    const fileHash = await calculateFileHash(file);
+    
+    // 2. 检查是否已存在相同文件
+    const hashCheck = await checkFileHash(fileHash);
+    if (hashCheck.exists && hashCheck.url) {
+      console.log('文件已存在，使用现有URL:', hashCheck.url);
+      return hashCheck.url;
+    }
+    
+    // 3. 如果不存在，执行上传
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('folder', folder);
+
+    const response = await fetch(`${API_BASE_URL}/api/oss/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || '图片上传失败');
+    }
+
+    const data = await response.json();
+    return data.url;
+  } catch (error) {
+    console.error('OSS上传失败:', error);
+    throw error;
+  }
+};
+
+// ---------------- AI虚拟试衣（使用OSS URL） ----------------
+export interface VirtualTryOnUrlRequest {
+  model_image_url: string;
+  top_clothing_url?: string;
+  bottom_clothing_url?: string;
+}
+
+export const performVirtualTryOnByUrl = async (
+  data: VirtualTryOnUrlRequest
+): Promise<VirtualTryOnResponse> => {
+  const response = await fetch(`${API_BASE_URL}/api/virtual-try-on`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'AI试衣失败');
   }
 
   return response.json();

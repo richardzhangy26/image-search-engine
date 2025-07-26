@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { searchProducts, SearchResult, getImageUrl, getProductById, API_BASE_URL, ProductInfo } from '../services/api';
 import { Input, Card, Image, Descriptions, message } from 'antd';
@@ -11,8 +11,49 @@ export const ProductSearch: React.FC = () => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [product, setProduct] = useState<ProductInfo | null>(null);
+  const [forceUpdate, setForceUpdate] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropAreaRef = useRef<HTMLDivElement>(null);
+
+  // Debug: 监控 searchImage 状态变化
+  useEffect(() => {
+    console.log('🔍 searchImage 状态变化:', {
+      hasImage: !!searchImage,
+      fileName: searchImage?.name,
+      fileSize: searchImage?.size,
+      fileType: searchImage?.type,
+      timestamp: new Date().toISOString()
+    });
+  }, [searchImage]);
+
+  // 统一的图片处理函数
+  const handleImageFile = useCallback((file: File, source: string) => {
+    console.log(`📸 处理图片文件 [${source}]:`, {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      timestamp: new Date().toISOString()
+    });
+
+    // 清理旧的预览URL
+    if (previewUrl) {
+      console.log(`📸 [${source}] 清理旧的预览URL`);
+      URL.revokeObjectURL(previewUrl);
+    }
+
+    // 创建新的预览URL
+    const newPreviewUrl = URL.createObjectURL(file);
+    console.log(`📸 [${source}] 创建新的预览URL:`, newPreviewUrl);
+
+    // 同时设置两个状态
+    setSearchImage(file);
+    setPreviewUrl(newPreviewUrl);
+    
+    // 强制重新渲染
+    setForceUpdate(prev => prev + 1);
+    
+    console.log(`📸 [${source}] 图片处理完成`);
+  }, [previewUrl]);
 
   // Clean up object URLs when component unmounts
   useEffect(() => {
@@ -26,25 +67,41 @@ export const ProductSearch: React.FC = () => {
   // Add paste event listener to the document
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
+      console.log('📋 粘贴事件触发');
+      console.log('📋 剪贴板数据:', e.clipboardData);
+      console.log('📋 文件数量:', e.clipboardData?.files.length || 0);
+      
       if (e.clipboardData && e.clipboardData.files.length > 0) {
         const file = e.clipboardData.files[0];
+        console.log('📋 检测到文件:', {
+          name: file.name,
+          type: file.type,
+          size: file.size
+        });
+        
         if (file.type.startsWith('image/')) {
+          console.log('📋 确认是图片文件，开始处理');
           e.preventDefault();
-          handleFileSelected(file);
+          handleImageFile(file, '粘贴');
+        } else {
+          console.log('📋 不是图片文件，忽略');
         }
+      } else {
+        console.log('📋 剪贴板中没有文件');
       }
     };
 
+    console.log('📋 添加粘贴事件监听器');
     document.addEventListener('paste', handlePaste);
     return () => {
+      console.log('📋 移除粘贴事件监听器');
       document.removeEventListener('paste', handlePaste);
     };
-  }, []);
+  }, [handleImageFile]);
 
-  const handleFileSelected = (file: File) => {
-    setSearchImage(file);
-    setPreviewUrl(URL.createObjectURL(file));
-  };
+  const handleFileSelected = useCallback((file: File) => {
+    handleImageFile(file, '文件选择');
+  }, [handleImageFile]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -69,7 +126,7 @@ export const ProductSearch: React.FC = () => {
     e.stopPropagation();
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
@@ -77,10 +134,10 @@ export const ProductSearch: React.FC = () => {
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
       if (file.type.startsWith('image/')) {
-        handleFileSelected(file);
+        handleImageFile(file, '拖拽');
       }
     }
-  };
+  }, [handleImageFile]);
 
   const handleBrowseClick = () => {
     if (fileInputRef.current) {
@@ -202,7 +259,6 @@ export const ProductSearch: React.FC = () => {
               onChange={handleImageChange}
               className="hidden"
               accept="image/*"
-              required
             />
             
             {previewUrl ? (
@@ -279,6 +335,16 @@ export const ProductSearch: React.FC = () => {
               ? 'bg-gray-400'
               : 'bg-blue-500 hover:bg-blue-600'
           }`}
+          onClick={() => {
+            console.log('🔘 搜索按钮点击事件:', {
+              loading,
+              hasSearchImage: !!searchImage,
+              searchImageName: searchImage?.name,
+              disabled: loading || !searchImage,
+              forceUpdateCounter: forceUpdate,
+              timestamp: new Date().toISOString()
+            });
+          }}
         >
           {loading ? '搜索中...' : '搜索'}
         </button>
