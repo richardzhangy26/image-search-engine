@@ -39,7 +39,7 @@ export const ProductUpload: React.FC = () => {
       .ant-upload-list-picture-card .ant-upload-list-item {
         width: 120px !important;
         height: 120px !important;
-        margin: 0 8px 8px 0 !important;
+        margin: 0 !important;
       }
       /* Ensure thumbnails fill the item box nicely */
       .ant-upload-list-picture-card .ant-upload-list-item-thumbnail img {
@@ -51,7 +51,12 @@ export const ProductUpload: React.FC = () => {
       .ant-upload-list-picture-card-container {
         display: flex !important;
         flex-wrap: wrap !important;
-        gap: 8px !important;
+        gap: 16px !important;
+      }
+      
+      /* Ensure proper spacing for our custom layout */
+      .ant-upload-list-picture-card .ant-upload-list-item-container {
+        margin-bottom: 40px !important;
       }
     `;
     document.head.appendChild(style);
@@ -771,8 +776,14 @@ export const ProductUpload: React.FC = () => {
               defaultFileList={form.getFieldValue('good_img')}
               itemRender={(originNode, file, fileList, actions) => {
                 return (
-                  <div style={{ position: 'relative' }}>
-                    {originNode}
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    width: '120px'
+                  }}>
+                    <div style={{ position: 'relative', marginBottom: '8px' }}>
+                      {originNode}
+                    </div>
                     <Select
                       size="small"
                       placeholder="选择标签"
@@ -784,13 +795,9 @@ export const ProductUpload: React.FC = () => {
                         }));
                       }}
                       style={{ 
-                        position: 'absolute', 
-                        bottom: -30, 
-                        left: 0, 
-                        right: 0,
-                        width: '100%',
-                        zIndex: 10
+                        width: '100%'
                       }}
+                      dropdownStyle={{ zIndex: 1001 }}
                       allowClear
                     >
                       <Select.Option value="尺码图">尺码图</Select.Option>
