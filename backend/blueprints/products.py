@@ -50,6 +50,18 @@ def add_product():
     try:
         # 获取产品数据
         product_data = json.loads(request.form.get('product'))
+        # 要求并校验产品ID
+        provided_id = product_data.get('id')
+        if provided_id is None or str(provided_id).strip() == '':
+            return jsonify({'error': '必须提供产品ID (id)'}), 400
+        try:
+            provided_id_int = int(provided_id)
+        except (TypeError, ValueError):
+            return jsonify({'error': '产品ID必须为整数'}), 400
+        # 检查重复
+        if Product.query.get(provided_id_int):
+            return jsonify({'error': f'产品ID {provided_id_int} 已存在，请更换一个ID'}), 400
+
         # 创建新产品对象
         product = Product.from_dict(product_data)
         

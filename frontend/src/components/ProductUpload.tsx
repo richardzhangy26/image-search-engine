@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Table, Button, Modal, Form, Input, InputNumber, message, Popconfirm, Upload, Image, Select, Progress, AutoComplete } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, SearchOutlined, LoadingOutlined, ReloadOutlined } from '@ant-design/icons';
-import { uploadProductCSV, ProductInfo, getProducts, addProduct, updateProduct, deleteProduct, deleteProductImage, API_BASE_URL, buildVectorIndexSSE, batchDeleteProductsAPI } from '../services/api';
+import { uploadProductCSV, ProductInfo, getProducts, addProduct, updateProduct, deleteProduct, deleteProductImage, API_BASE_URL, buildVectorIndexSSE,buildVectorIndex, batchDeleteProductsAPI } from '../services/api';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 
 // Add interface for image with tag
@@ -665,6 +665,13 @@ export const ProductUpload: React.FC = () => {
       >
         <Form form={form} layout="vertical">
           <div className="grid grid-cols-2 gap-4">
+            <Form.Item
+              name="id"
+              label="商品ID"
+              rules={[{ required: true, message: '请输入商品ID（整数）' }, { pattern: /^\d+$/, message: '商品ID必须为整数' }]}
+            >
+              <Input disabled={!!editingProduct} />
+            </Form.Item>
             <Form.Item
               name="name"
               label="商品名称"

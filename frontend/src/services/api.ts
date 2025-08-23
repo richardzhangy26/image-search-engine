@@ -15,7 +15,7 @@ const getApiBaseUrl = () => {
 export const API_BASE_URL = getApiBaseUrl();
 
 export interface ProductInfo {
-  id?: string;
+  id?: number | string;
   name: string;
   description: string;
   price: number;
