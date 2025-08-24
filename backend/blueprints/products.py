@@ -62,8 +62,9 @@ def add_product():
         if Product.query.get(provided_id_int):
             return jsonify({'error': f'产品ID {provided_id_int} 已存在，请更换一个ID'}), 400
 
-        # 创建新产品对象
+        # 创建新产品对象（确保赋值id）
         product = Product.from_dict(product_data)
+        product.id = provided_id_int
         
         # 先保存到数据库以获取产品ID
         db.session.add(product)
@@ -336,7 +337,7 @@ def search_products():
         if 'PRODUCT_INDEX' not in current_app.config:
             return jsonify({'error': '向量搜索未配置'}), 500
         product_index = current_app.config['PRODUCT_INDEX']
-        
+        import pdb;pdb.set_trace()
         # 处理图片上传
         if 'image' in request.files:
             file = request.files['image']
@@ -623,6 +624,16 @@ def upload_csv():
             stats['total'] += 1
             
             try:
+                # 要求CSV包含 id 列并校验
+                if 'id' not in row or row['id'] is None or str(row['id']).strip() == '':
+                    raise ValueError('CSV缺少必填列 id 或该值为空')
+                try:
+                    csv_id = int(row['id'])
+                except (TypeError, ValueError):
+                    raise ValueError(f"CSV中id值无效，必须为整数: '{row.get('id')}'")
+                # 检查重复ID
+                if Product.query.get(csv_id):
+                    raise ValueError(f'产品ID {csv_id} 已存在，跳过导入该行')
                 # 创建产品对象
                 product_data = {}
                 for key, value in row.items():
@@ -634,6 +645,8 @@ def upload_csv():
                             product_data[key] = float(value)
                         else:
                             product_data[key] = value
+                # 设置ID
+                product_data['id'] = csv_id
                 
                 # 处理特殊字段
                 if '货号' in row:
@@ -671,6 +684,7 @@ def upload_csv():
                 
                 # 创建产品对象并保存到数据库
                 product = Product.from_dict(product_data)
+                product.id = csv_id
                 db.session.add(product)
                 db.session.commit()
                 
@@ -844,6 +858,69 @@ def build_vector_index():
         
         except Exception as e:
             # 捕获生成器初始化或查询时发生的顶层错误
+            current_app.logger.error(f"构建向量索引流时发生严重错误: {str(e)}")
+            yield f"data: {json.dumps({'type': 'error', 'message': f'构建向量索引过程中发生严重错误: {str(e)}'})}\n\n"
+
+    return Response(stream_with_context(event_stream_generator()), mimetype='text/event-stream')
+
+# 为前端SSE路径提供兼容路由
+@products_bp.route('/build-vector-index/sse', methods=['GET'])
+@cross_origin()
+def build_vector_index_sse():
+    def event_stream_generator():
+        try:
+            if 'PRODUCT_INDEX' not in current_app.config:
+                from product_search import VectorProductIndex
+                product_index = VectorProductIndex()
+                current_app.config['PRODUCT_INDEX'] = product_index
+            existing_product_id_tuples = db.session.query(ProductImage.product_id.distinct()).all()
+            existing_product_ids = {pid[0] for pid in existing_product_id_tuples}
+
+            products_to_process = Product.query.filter(
+                and_(
+                    Product.id.notin_(existing_product_ids),
+                    Product.good_img.isnot(None),
+                    Product.good_img != ''
+                )
+            ).all()
+
+            total_count = len(products_to_process)
+            yield f"data: {json.dumps({'type': 'total', 'value': total_count})}\n\n"
+
+            if total_count == 0:
+                yield f"data: {json.dumps({'type': 'complete', 'message': '所有产品的图片都已建立向量索引', 'products_processed': 0, 'errors': []})}\n\n"
+                return
+
+            processed_count = 0
+            error_list = []
+
+            for product in products_to_process:
+                try:
+                    good_img_urls = parse_list_field(product.good_img)
+                    if not good_img_urls:
+                        processed_count += 1
+                        yield f"data: {json.dumps({'type': 'progress', 'processed': processed_count, 'total': total_count, 'current_product_id': product.id, 'status': 'skipped_no_images'})}\n\n"
+                        continue
+
+                    _add_images_to_vector_index(product.id, good_img_urls)
+                    processed_count += 1
+                    yield f"data: {json.dumps({'type': 'progress', 'processed': processed_count, 'total': total_count, 'current_product_id': product.id, 'status': 'processed'})}\n\n"
+
+                except Exception as e:
+                    error_msg = f"处理产品 {product.id} (名称: {product.name}) 时发生意外错误: {str(e)}"
+                    current_app.logger.error(error_msg)
+                    error_list.append(error_msg)
+                    processed_count += 1
+                    yield f"data: {json.dumps({'type': 'progress', 'processed': processed_count, 'total': total_count, 'current_product_id': product.id, 'status': 'error'})}\n\n"
+                    continue
+
+            final_message = f'向量索引构建完成。成功处理（或跳过） {processed_count} 个产品中的 {total_count} 个。'
+            if error_list:
+                final_message += f" 发生 {len(error_list)} 个错误。"
+
+            yield f"data: {json.dumps({'type': 'complete', 'message': final_message, 'products_processed': processed_count, 'total_products_considered': total_count, 'errors': error_list})}\n\n"
+
+        except Exception as e:
             current_app.logger.error(f"构建向量索引流时发生严重错误: {str(e)}")
             yield f"data: {json.dumps({'type': 'error', 'message': f'构建向量索引过程中发生严重错误: {str(e)}'})}\n\n"
 

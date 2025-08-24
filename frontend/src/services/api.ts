@@ -106,9 +106,9 @@ export const getImageUrl = (imagePath: string): string => {
   return fullUrl;
 };
 
-export const getProductById = async (productId: string): Promise<ProductInfo> => {
+export const getProductById = async (productId: number | string): Promise<ProductInfo> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/products/${productId}`, {
+    const response = await fetch(`${API_BASE_URL}/api/products/${String(productId)}`, {
       method: 'GET',
     });
 
@@ -303,8 +303,8 @@ export const addProduct = async (formData: FormData): Promise<{ message: string;
 };
 
 // 更新产品
-export const updateProduct = async (productId: string, formData: FormData): Promise<{ message: string }> => {
-  const response = await fetch(`${API_BASE_URL}/api/products/${productId}`, {
+export const updateProduct = async (productId: number | string, formData: FormData): Promise<{ message: string }> => {
+  const response = await fetch(`${API_BASE_URL}/api/products/${String(productId)}`, {
     method: 'PUT',
     body: formData,
   });
@@ -318,8 +318,8 @@ export const updateProduct = async (productId: string, formData: FormData): Prom
 };
 
 // 删除产品
-export const deleteProduct = async (productId: string): Promise<{ message: string }> => {
-  const response = await fetch(`${API_BASE_URL}/api/products/${productId}`, {
+export const deleteProduct = async (productId: number | string): Promise<{ message: string }> => {
+  const response = await fetch(`${API_BASE_URL}/api/products/${String(productId)}`, {
     method: 'DELETE',
   });
 
@@ -373,11 +373,11 @@ export const batchDeleteProductsAPI = async (productIds: React.Key[]): Promise<{
 };
 
 // 删除产品图片
-export const deleteProductImage = async (productId: string, filename: string) => {
+export const deleteProductImage = async (productId: number | string, filename: string) => {
   // 确保文件名不包含开头的斜杠
   const cleanFilename = filename.replace(/^\/+/, '');
   
-  const response = await fetch(`${API_BASE_URL}/api/products/images/${productId}/${cleanFilename}`, {
+  const response = await fetch(`${API_BASE_URL}/api/products/images/${String(productId)}/${cleanFilename}`, {
     method: 'DELETE',
     headers: {
       'Content-Type': 'application/json',

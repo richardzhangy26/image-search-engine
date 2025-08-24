@@ -4,7 +4,7 @@ import json
 
 class Product(db.Model):
     __tablename__ = 'products'
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=False)
     name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=True)
     price = db.Column(db.Float, nullable=False)
@@ -99,8 +99,15 @@ class Product(db.Model):
         product = Product()
         
         for key, value in data.items():
-            # 跳过id字段，让数据库自动生成
+            # 允许设置自定义整形主键 id
             if key == 'id':
+                # 仅当提供有效的整型值时才设置
+                try:
+                    if value is not None and str(value).strip() != '':
+                        product.id = int(value)
+                except (TypeError, ValueError):
+                    # 非法 id 将在上层校验报错，这里忽略设置
+                    pass
                 continue
                 
             if key in ['size_img', 'good_img'] and value:
