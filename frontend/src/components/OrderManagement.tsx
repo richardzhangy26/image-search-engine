@@ -711,6 +711,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ onEditOrder })
           shippingAddress: order.shipping_address || '',
           notes: order.customer_notes || '',
           productCode: product.product_id,
+          productName: product.product_name,
           attributes: `${product.color || ''}, ${product.size || ''}`.replace(/^, |, $/, '').trim() || '无',
           quantity: product.quantity
         }));
@@ -721,12 +722,13 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ onEditOrder })
       
       // 定义列
       worksheet.columns = [
-        { header: '订单编号', key: 'orderNumber', width: 20 },
+        { header: '订单ID', key: 'orderNumber', width: 20 },
         { header: '收件人姓名', key: 'customerName', width: 15 },
         { header: '收件人联系方式', key: 'customerPhone', width: 20 },
         { header: '收件人地址', key: 'shippingAddress', width: 30 },
         { header: '备注', key: 'notes', width: 20 },
-        { header: '商品编码', key: 'productCode', width: 15 },
+        { header: '商品ID', key: 'productCode', width: 15 },
+        { header:'商品名称',key:'productName',width:20 },
         { header: '商品属性', key: 'attributes', width: 20 },
         { header: '数量', key: 'quantity', width: 10 }
       ];

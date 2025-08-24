@@ -113,7 +113,7 @@ function ProductDetails() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
                 <img
-                  src={product.good_img || '/placeholder-image.png'}
+                  src={product.good_img && product.good_img[0] ? getImageUrl(product.good_img[0].url) : ''}
                   alt={product.name}
                   className="w-full rounded-lg shadow-lg"
                 />
