@@ -435,8 +435,18 @@ export const ProductUpload: React.FC = () => {
           // Handle both old format (array of strings) and new format (array of objects)
           let firstPath = '';
           if (imagesRaw.length > 0) {
-            if (typeof imagesRaw[0] === 'string') firstPath = imagesRaw[0];
-            else if (imagesRaw[0]?.url) firstPath = imagesRaw[0].url;
+            // First try to find an image with tag '尺码图'
+            const sizeImage = imagesRaw.find((img: any) => 
+              typeof img === 'object' && img?.tag === '尺码图'
+            );
+            
+            if (sizeImage && sizeImage.url) {
+              firstPath = sizeImage.url;
+            } else {
+              // Fallback to first image
+              if (typeof imagesRaw[0] === 'string') firstPath = imagesRaw[0];
+              else if (imagesRaw[0]?.url) firstPath = imagesRaw[0].url;
+            }
           }
           
           const thumbnailUrl = firstPath ? `${API_BASE_URL}${firstPath}` : '';
@@ -537,7 +547,7 @@ export const ProductUpload: React.FC = () => {
           </Button>
           <Popconfirm
             title="确定要删除这个产品吗？"
-            onConfirm={() => handleDelete(record.id)}
+            onConfirm={() => handleDelete(String(record.id))}
           >
             <Button type="text" danger icon={<DeleteOutlined />}>
               删除
