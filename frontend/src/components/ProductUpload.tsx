@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Table, Button, Modal, Form, Input, InputNumber, message, Popconfirm, Upload, Image, Select, Progress, AutoComplete } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, SearchOutlined, LoadingOutlined, ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, SearchOutlined, LoadingOutlined, ReloadOutlined, CloseCircleFilled } from '@ant-design/icons';
 import { uploadProductCSV, ProductInfo, getProducts, addProduct, updateProduct, deleteProduct, deleteProductImage, API_BASE_URL, buildVectorIndexSSE, batchDeleteProductsAPI } from '../services/api';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 
@@ -13,6 +13,29 @@ interface ImageWithTag {
 export const ProductUpload: React.FC = () => {
   const [products, setProducts] = useState<ProductInfo[]>([]);
   const [loading, setLoading] = useState(false);
+  
+  // 生成6位数字水印：售价和商品ID交替组合，不足位数用x补齐
+  const generateWatermark = (salePrice: number, productId: string | number) => {
+    // 售价处理：保留3位，不足补x
+    const priceStr = Math.floor(salePrice || 0).toString();
+    const formattedPrice = priceStr.length >= 3 
+      ? priceStr.slice(-3) 
+      : 'x'.repeat(3 - priceStr.length) + priceStr;
+    
+    // 商品ID处理：保留3位，不足补x
+    const idStr = (productId || '').toString();
+    const formattedId = idStr.length >= 3 
+      ? idStr.slice(-3) 
+      : 'x'.repeat(3 - idStr.length) + idStr;
+    
+    // 交替组合：价格第1位 + ID第1位 + 价格第2位 + ID第2位 + 价格第3位 + ID第3位
+    let result = '';
+    for (let i = 0; i < 3; i++) {
+      result += formattedPrice[i] + formattedId[i];
+    }
+    
+    return result;
+  };
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductInfo | null>(null);
   const [form] = Form.useForm();
@@ -30,6 +53,7 @@ export const ProductUpload: React.FC = () => {
   const [showProgress, setShowProgress] = useState<boolean>(false);
   const [imageTags, setImageTags] = useState<Record<string, string>>({});
   const [factoryNames, setFactoryNames] = useState<string[]>([]);
+  const [showWatermark, setShowWatermark] = useState<Record<string, boolean>>({});
 
   // Inject custom styles for Upload thumbnails to keep uniform size and tidy layout
   useEffect(() => {
@@ -355,10 +379,23 @@ export const ProductUpload: React.FC = () => {
           </Button>
         </div>
       ),
-      filterIcon: (filtered: boolean) => <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
+      filterIcon: (filtered: boolean) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+          <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
+          {filtered && (
+            <CloseCircleFilled
+              style={{ marginLeft: 4, color: '#999' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setFilteredInfo(prev => ({ ...prev, id: null }));
+              }}
+            />
+          )}
+        </span>
+      ),
       onFilter: (value: boolean | React.Key, record: ProductInfo) => {
         const searchValue = String(value).toLowerCase();
-        return !!record.id?.toString().toLowerCase().includes(searchValue);
+        return record.id?.toString().toLowerCase() === searchValue;
       },
     },
     {
@@ -405,7 +442,20 @@ export const ProductUpload: React.FC = () => {
           </Button>
         </div>
       ),
-      filterIcon: (filtered: boolean) => <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
+      filterIcon: (filtered: boolean) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+          <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
+          {filtered && (
+            <CloseCircleFilled
+              style={{ marginLeft: 4, color: '#999' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setFilteredInfo(prev => ({ ...prev, name: null }));
+              }}
+            />
+          )}
+        </span>
+      ),
       onFilter: (value: boolean | React.Key, record: ProductInfo) => {
         const searchValue = String(value).toLowerCase();
         return !!record.name?.toString().toLowerCase().includes(searchValue);
@@ -425,7 +475,7 @@ export const ProductUpload: React.FC = () => {
       title: '商品图片',
       dataIndex: 'good_img',
       key: 'good_img',
-      render: (good_img: string | string[]) => {
+      render: (good_img: string | string[], record: ProductInfo) => {
         if (!good_img) return <span>无图片</span>;
         
         try {
@@ -451,14 +501,137 @@ export const ProductUpload: React.FC = () => {
           
           const thumbnailUrl = firstPath ? `${API_BASE_URL}${firstPath}` : '';
           
+          // 生成水印文本
+          const watermarkText = generateWatermark(record.sale_price || 0, record.id || '');
+          const showWatermarkForThis = showWatermark[record.id as string];
+          
           return (
-            <Image
-              src={thumbnailUrl}
-              alt="商品图片"
-              width={80}
-              height={80}
-              style={{ objectFit: 'cover' }}
-            />
+            <div 
+              style={{ 
+                position: 'relative', 
+                display: 'inline-block'
+              }}
+            >
+              <Image
+                src={thumbnailUrl}
+                alt="商品图片"
+                width={80}
+                height={80}
+                style={{ objectFit: 'cover' }}
+                preview={{
+                  mask: (
+                    <div 
+                      style={{ 
+                        position: 'absolute',
+                        bottom: '4px',
+                        left: '4px',
+                        right: '4px',
+                        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                        color: 'white',
+                        padding: '2px 4px',
+                        fontSize: '10px',
+                        borderRadius: '2px',
+                        textAlign: 'center'
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowWatermark(prev => ({
+                          ...prev,
+                          [record.id as string]: !prev[record.id as string]
+                        }));
+                      }}
+                    >
+                      {showWatermarkForThis ? '隐藏水印' : '显示水印'}
+                    </div>
+                  ),
+                  toolbarRender: (
+                    _,
+                    {
+                      transform: { scale },
+                    },
+                  ) => (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ color: 'white', fontSize: '12px' }}>
+                        缩放: {(scale * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  ),
+                  imageRender: () => (
+                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                      <img 
+                        src={thumbnailUrl} 
+                        alt="商品图片" 
+                        style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain' }}
+                      />
+                      {showWatermarkForThis && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '20px',
+                          right: '20px',
+                          backgroundColor: 'transparent',
+                          color: 'black',
+                          padding: '8px 12px',
+                          fontSize: '24px',
+                          borderRadius: '6px',
+                          fontFamily: 'Consolas, Monaco, monospace',
+                          fontWeight: 'bold',
+                          textShadow: '2px 2px 2px white, -2px -2px 2px white, 2px -2px 2px white, -2px 2px 2px white',
+                          letterSpacing: '2px',
+                          zIndex: 1000
+                        }}>
+                          {watermarkText}
+                        </div>
+                      )}
+                    </div>
+                  )
+                }}
+              />
+              {showWatermarkForThis && (
+                <div style={{
+                  position: 'absolute',
+                  top: '4px',
+                  right: '4px',
+                  backgroundColor: 'transparent',
+                  color: 'black',
+                  padding: '3px 6px',
+                  fontSize: '12px',
+                  borderRadius: '3px',
+                  fontFamily: 'Consolas, Monaco, monospace',
+                  fontWeight: 'bold',
+                  pointerEvents: 'none',
+                  textShadow: '1px 1px 1px white, -1px -1px 1px white, 1px -1px 1px white, -1px 1px 1px white',
+                  letterSpacing: '0.5px'
+                }}>
+                  {watermarkText}
+                </div>
+              )}
+              <div 
+                style={{
+                  position: 'absolute',
+                  bottom: '2px',
+                  left: '2px',
+                  right: '2px',
+                  backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                  color: 'white',
+                  padding: '2px 4px',
+                  fontSize: '10px',
+                  borderRadius: '2px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  opacity: 0.8
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowWatermark(prev => ({
+                    ...prev,
+                    [record.id as string]: !prev[record.id as string]
+                  }));
+                }}
+                title="点击切换水印显示"
+              >
+                {showWatermarkForThis ? '隐藏水印' : '显示水印'}
+              </div>
+            </div>
           );
         } catch (e) {
           console.error('Error parsing good_img:', e);
@@ -508,12 +681,12 @@ export const ProductUpload: React.FC = () => {
         </Select>
       ),
     },
-    {
-      title: '成本价',
-      dataIndex: 'price',
-      key: 'price',
-      render: (price: number) => `¥${price.toFixed(2)}`,
-    },
+    // {
+    //   title: '成本价',
+    //   dataIndex: 'price',
+    //   key: 'price',
+    //   render: (price: number) => `¥${price.toFixed(2)}`,
+    // },
     {
       title: '销售价',
       dataIndex: 'sale_price',
@@ -594,7 +767,36 @@ export const ProductUpload: React.FC = () => {
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold">产品管理</h2>
+        <div className="flex items-center">
+          <h2 className="text-2xl font-bold">产品管理</h2>
+          <Button
+            type="link"
+            onClick={() => {
+              setFilteredInfo({});
+              setSelectedRowKeys([]);
+            }}
+            style={{ marginLeft: 12 }}
+          >
+            重置筛选
+          </Button>
+          <Button
+            type="link"
+            onClick={() => {
+              const allProductIds = products.map(p => p.id as string).filter(id => id);
+              const hasAnyWatermark = allProductIds.some(id => showWatermark[id]);
+              
+              const newState: Record<string, boolean> = {};
+              allProductIds.forEach(id => {
+                newState[id] = !hasAnyWatermark;
+              });
+              setShowWatermark(newState);
+            }}
+            style={{ marginLeft: 8 }}
+            title="一键切换所有商品图片的水印显示"
+          >
+            {Object.values(showWatermark).some(Boolean) ? '隐藏所有水印' : '显示所有水印'}
+          </Button>
+        </div>
         <div className="space-x-2">
           <Button
             type="primary"
