@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Image, Select, message, Table, Button, Popconfirm, Space, Input, Upload, DatePicker, Form } from 'antd';
-import { SearchOutlined, UploadOutlined } from '@ant-design/icons';
+import { SearchOutlined, UploadOutlined, SortAscendingOutlined, SortDescendingOutlined } from '@ant-design/icons';
 import type { TablePaginationConfig, SorterResult, FilterValue, Key } from 'antd/es/table/interface';
 import ExcelJS from 'exceljs';
 import type { Dayjs } from 'dayjs';
@@ -78,6 +78,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ onEditOrder })
   const [searchText, setSearchText] = useState('');
   const [searchedColumn, setSearchedColumn] = useState('');
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [customerIdSearch, setCustomerIdSearch] = useState('');
   const [isEditNotesVisible, setIsEditNotesVisible] = useState(false);
   const [editCustomerNotes, setEditCustomerNotes] = useState('');
   const [editInternalNotes, setEditInternalNotes] = useState('');
@@ -105,7 +106,21 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ onEditOrder })
         params.append('end_date', dateRange[1].format('YYYY-MM-DD'));
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/orders?${params}`, {
+      // 排序参数
+      if (sortField) {
+        params.append('sort', sortField);
+      }
+      if (sortOrder) {
+        params.append('order', sortOrder === 'ascend' ? 'asc' : 'desc');
+      }
+
+      // 客户ID搜索参数
+      if (customerIdSearch && customerIdSearch.trim() !== '') {
+        params.append('customer_id', customerIdSearch.trim());
+      }
+
+
+      const response = await fetch(`${API_BASE_URL}/api/orders?${params.toString()}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -237,6 +252,18 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ onEditOrder })
     setSearchText('');
   };
 
+  // 一键重置全部筛选条件
+  const handleResetAllFilters = () => {
+    setStatusFilter('');
+    setDateRange(null);
+    setSearchText('');
+    setSearchedColumn('');
+    setSelectedRowKeys([]);
+    setCustomerIdSearch('');
+    setPagination(prev => ({ ...prev, current: 1 }));
+    fetchOrders(1, pagination.pageSize);
+  };
+
   const getColumnSearchProps = (dataIndex: string) => ({
     filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
       <div style={{ padding: 8 }}>
@@ -292,7 +319,26 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ onEditOrder })
 
   const columns = [
     {
-      title: '订单编号',
+      title: (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>订单编号</span>
+          <Button
+            size="small"
+            type="text"
+            icon={sortField === 'id' && sortOrder === 'ascend' ? <SortAscendingOutlined /> : <SortDescendingOutlined />}
+            onClick={() => {
+              setSortField('id');
+              setSortOrder(prev => (prev === 'ascend' ? 'descend' : 'ascend'));
+              fetchOrders(1, pagination.pageSize);
+            }}
+            style={{ 
+              color: sortField === 'id' ? '#1890ff' : '#666',
+              padding: '2px 4px',
+              minWidth: 'auto'
+            }}
+          />
+        </div>
+      ),
       dataIndex: 'id',
       key: 'id',
       render: (text: string, record: Order) => (
@@ -308,7 +354,64 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ onEditOrder })
       title: '客户ID',
       dataIndex: 'customer_id',
       key: 'customer_id',
-      ...getColumnSearchProps('customer_id'),
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+        <div style={{ padding: 8 }}>
+          <Input
+            placeholder="搜索客户ID"
+            value={selectedKeys[0] || customerIdSearch}
+            onChange={e => {
+              const value = e.target.value;
+              setSelectedKeys(value ? [value] : []);
+              // 实时更新状态，避免不同步
+              if (value !== customerIdSearch) {
+                setCustomerIdSearch(value);
+              }
+            }}
+            onPressEnter={() => {
+              const value = (selectedKeys[0] || '').toString();
+              setCustomerIdSearch(value);
+              confirm();
+              // 立即触发搜索，不依赖useEffect
+              fetchOrders(1, pagination.pageSize);
+            }}
+            style={{ marginBottom: 8, display: 'block' }}
+          />
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => {
+                const value = (selectedKeys[0] || '').toString();
+                setCustomerIdSearch(value);
+                confirm();
+                // 立即触发搜索，不依赖useEffect
+                fetchOrders(1, pagination.pageSize);
+              }}
+              size="small"
+              style={{ width: 90 }}
+            >
+              搜索
+            </Button>
+            <Button
+              onClick={() => {
+                if (clearFilters) clearFilters();
+                setSelectedKeys([]);
+                setCustomerIdSearch('');
+                confirm();
+                // 立即触发搜索，不依赖useEffect
+                fetchOrders(1, pagination.pageSize);
+              }}
+              size="small"
+              style={{ width: 90 }}
+            >
+              重置
+            </Button>
+          </Space>
+        </div>
+      ),
+      filterIcon: (filtered: boolean) => (
+        <SearchOutlined style={{ color: filtered || !!customerIdSearch ? '#1890ff' : undefined }} />
+      ),
+      filteredValue: customerIdSearch ? [customerIdSearch] : null,
       render: (text: string, record: Order) => (
         <div>
           <div className="text-sm font-medium text-gray-900">{text}</div>
@@ -816,7 +919,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ onEditOrder })
     }
   };
 
-  // 使用 useEffect 监听 statusFilter 和 dateRange 变化
+  // 使用 useEffect 监听 statusFilter 和 dateRange 变化，customerIdSearch 通过按钮触发
   useEffect(() => {
     fetchOrders(1);
   }, [statusFilter, dateRange]);
@@ -850,6 +953,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ onEditOrder })
         >
           导出所选订单
         </Button>
+        <Button onClick={handleResetAllFilters}>重置筛选</Button>
       </div>
       <Table
         columns={columns}
