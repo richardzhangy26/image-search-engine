@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+// import { Link } from 'react-router-dom';
 import { searchProducts, SearchResult, getImageUrl, getProductById, API_BASE_URL, ProductInfo } from '../services/api';
 import { Input, Card, Image, Descriptions, message } from 'antd';
 
@@ -173,36 +173,26 @@ export const ProductSearch: React.FC = () => {
     }
   };
 
-  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>, result: SearchResult) => {
-    console.error(`Error loading image for product ${result.id}`, e);
-    console.log('Image path that failed:', result.image_path);
-    console.log('Original path:', result.original_path);
-    
-    // Try alternative paths
-    const imgElement = e.target as HTMLImageElement;
-    
-    // If the current path includes 商品信息/商品图, try a different format
-    if (result.image_path && result.image_path.includes('商品信息/商品图')) {
-      console.log('Trying alternative path for product image');
-      
-      // Extract the filename from the path
-      const pathParts = result.original_path?.split('/') || [];
-      const filename = pathParts[pathParts.length - 1];
-      
-      if (filename) {
-        // Try direct images path
-        const altPath = `/api/images/${filename}`;
-        console.log('Trying alternative path:', altPath);
-        imgElement.src = altPath;
-        return;
-      }
-    }
-    
-    // If we get here, set to a placeholder
-    imgElement.src = '/placeholder-image.png';
-    imgElement.alt = 'Image not available';
-    imgElement.className = `${imgElement.className} image-error`;
-  };
+  // const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>, result: SearchResult) => {
+  //   console.error(`Error loading image for product ${result.id}`, e);
+  //   console.log('Image path that failed:', result.image_path);
+  //   console.log('Original path:', result.original_path);
+  //   const imgElement = e.target as HTMLImageElement;
+  //   if (result.image_path && result.image_path.includes('商品信息/商品图')) {
+  //     console.log('Trying alternative path for product image');
+  //     const pathParts = result.original_path?.split('/') || [];
+  //     const filename = pathParts[pathParts.length - 1];
+  //     if (filename) {
+  //       const altPath = `/api/images/${filename}`;
+  //       console.log('Trying alternative path:', altPath);
+  //       imgElement.src = altPath;
+  //       return;
+  //     }
+  //   }
+  //   imgElement.src = '/placeholder-image.png';
+  //   imgElement.alt = 'Image not available';
+  //   imgElement.className = `${imgElement.className} image-error`;
+  // };
 
   const handleIdSearch = async (productId: string) => {
     if (!productId.trim()) {
@@ -375,8 +365,28 @@ export const ProductSearch: React.FC = () => {
                   <p className="text-sm text-gray-600 mb-2">
                     相似度: {(result.similarity * 100).toFixed(2)}%
                   </p>
-                  <p className="text-lg font-bold text-blue-600">
-                    {typeof result.price === 'number' ? `¥${result.price.toFixed(2)}` : '价格未知'}
+                  <p 
+                    className="text-lg font-bold text-blue-600 cursor-pointer hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const priceValue = (typeof result.sale_price === 'number' && !isNaN(result.sale_price))
+                        ? result.sale_price
+                        : (typeof result.sale_price === 'number' && !isNaN(result.sale_price))
+                          ? result.sale_price
+                          : undefined;
+
+                      const priceText = typeof priceValue === 'number' ? `¥${priceValue.toFixed(2)}` : '价格未知';
+                      navigator.clipboard.writeText(priceText)
+                        .then(() => message.success('价格已复制到剪贴板'))
+                        .catch(() => message.error('复制失败'));
+                    }}
+                    title="点击复制价格"
+                  > 
+                    {typeof result.sale_price === 'number' && !isNaN(result.sale_price)
+                      ? `¥${result.sale_price.toFixed(2)}`
+                      : (typeof result.price === 'number' && !isNaN(result.price)
+                        ? `¥${result.price.toFixed(2)}`
+                        : '价格未知')}
                   </p>
                   <div className="mt-3 flex items-center justify-between">
                     {/* 小缩略图 */}
@@ -433,7 +443,7 @@ export const ProductSearch: React.FC = () => {
                         return (
                           <Image
                             key={index}
-                            src={`${API_BASE_URL}${path}`}
+                            src={`${API_BASE_URL}                <Descriptions.Item label="成本价">¥{product.price}</Descriptions.Item>${path}`}
                             alt={`尺码图片 ${index + 1}`}
                             style={{ width: '100%', height: 'auto' }}
                           />
@@ -449,8 +459,7 @@ export const ProductSearch: React.FC = () => {
               <Descriptions title="商品信息" bordered column={1}>
                 <Descriptions.Item label="商品ID">{product.id}</Descriptions.Item>
                 <Descriptions.Item label="商品名称">{product.name}</Descriptions.Item>
-                <Descriptions.Item label="成本价">¥{product.price}</Descriptions.Item>
-                <Descriptions.Item label="销售价">¥{product.sale_price}</Descriptions.Item>
+                <Descriptions.Item label="销售价">{product.sale_price}</Descriptions.Item>
                 <Descriptions.Item label="货号">{product.product_code}</Descriptions.Item>
                 <Descriptions.Item label="图案">{product.pattern}</Descriptions.Item>
                 <Descriptions.Item label="裙长">{product.skirt_length}</Descriptions.Item>

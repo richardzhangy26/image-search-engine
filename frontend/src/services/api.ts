@@ -33,8 +33,10 @@ export interface ProductInfo {
   main_material?: string;    // 主面料成分
   color?: string;           // 颜色
   size?: string;           // 尺码
-  size_img?: string;      // 尺码图片URL
-  good_img?: string;      // 商品图片URL
+  // 尺码图片可以是单个URL或URL数组（后端可能返回数组）
+  size_img?: string | string[];
+  // 商品图片通常是URL数组；为兼容性，支持字符串或带 url/tag 的对象
+  good_img?: Array<string | { url: string; tag?: string }>;
   factory_name?: string;  // 工厂名称
   sales_status?: string;  // 销售状态：sold_out-售罄, on_sale-在售, pre_sale-预售
 }
@@ -170,7 +172,7 @@ export const uploadProduct = async (
 export const searchProducts = async (
   image: File,
   topK: number = 5
-): Promise<{ results: SearchResult[] }> => {
+): Promise<SearchResult[]> => {
   const formData = new FormData();
   formData.append('image', image);
   formData.append('top_k', topK.toString());
