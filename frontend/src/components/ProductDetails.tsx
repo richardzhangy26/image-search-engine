@@ -113,18 +113,32 @@ function ProductDetails() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
                 <img
-                  src={product.good_img && product.good_img[0] ? getImageUrl(product.good_img[0].url) : ''}
+                  src={(() => {
+                    const imgs = product.good_img;
+                    if (!imgs || (Array.isArray(imgs) && imgs.length === 0)) return '';
+                    const first = Array.isArray(imgs) ? imgs[0] : imgs;
+                    const url = typeof first === 'string' ? first : first?.url;
+                    return url ? getImageUrl(url) : '';
+                  })()}
                   alt={product.name}
                   className="w-full rounded-lg shadow-lg"
                 />
                 {product.size_img && (
                   <div className="mt-4">
                     <h3 className="text-lg font-semibold mb-2">尺码表</h3>
-                    <img
-                      src={product.size_img}
-                      alt="尺码表"
-                      className="w-full rounded-lg shadow"
-                    />
+                    {Array.isArray(product.size_img) ? (
+                      <img
+                        src={getImageUrl(product.size_img[0])}
+                        alt="尺码表"
+                        className="w-full rounded-lg shadow"
+                      />
+                    ) : (
+                      <img
+                        src={getImageUrl(product.size_img)}
+                        alt="尺码表"
+                        className="w-full rounded-lg shadow"
+                      />
+                    )}
                   </div>
                 )}
               </div>
