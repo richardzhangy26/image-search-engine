@@ -1,0 +1,35 @@
+---
+trigger: model_decision
+description: 
+globs: 
+---
+# Image Search Engine Project Overview
+
+This is a full-stack image search engine application with the following main components:
+
+## Frontend
+- Built with Vue.js and TypeScript
+- Located in the [frontend/](mdc:frontend) directory
+- Main entry point: [frontend/src/main.ts](mdc:frontend/src/main.ts)
+- Uses Tailwind CSS for styling
+
+## Backend
+- Python-based backend with Flask
+- Located in the [backend/](mdc:backend) directory
+- Main application: [backend/app.py](mdc:backend/app.py)
+- Database schema: [backend/create_tables.sql](mdc:backend/create_tables.sql)
+
+## Key Features
+- Image search functionality
+- Product search capabilities
+- Database integration
+- Docker containerization support
+
+## Development Setup
+- Docker Compose configuration: [docker-compose.yml](mdc:docker-compose.yml)
+- Frontend dependencies: [frontend/package.json](mdc:frontend/package.json)
+- Backend dependencies: [backend/requirements.txt](mdc:backend/requirements.txt)
+
+For detailed setup instructions, refer to:
+- [DOCKER_README.md](mdc:DOCKER_README.md)
+- [LOCAL_DOCKER_README.md](mdc:LOCAL_DOCKER_README.md)

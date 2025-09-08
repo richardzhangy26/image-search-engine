@@ -1,22 +1,75 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+// API基础URL - 智能检测局域网访问
+const getApiBaseUrl = () => {
+  // 根据当前访问地址智能设置后端地址
+  const hostname = window.location.hostname;
+  console.log('hostname', hostname);
+  // 如果通过 localhost 或 127.0.0.1 访问
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://localhost:5000';
+  }
+  
+  // 如果通过局域网 IP 访问，使用相同的 IP
+  return `http://${hostname}:5000`;
+};
+// export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+export const API_BASE_URL = getApiBaseUrl();
 
 export interface ProductInfo {
-  product_id: string;
+  id?: number | string;
   name: string;
-  attributes: Record<string, string>;
-  price: number;
   description: string;
+  price: number;
+  sale_price: number;
+  product_code?: string;        // 货号
+  pattern?: string;            // 图案
+  skirt_length?: string;       // 裙长
+  clothing_length?: string;    // 衣长
+  style?: string;             // 风格
+  pants_length?: string;      // 裤长
+  sleeve_length?: string;     // 袖长
+  fashion_elements?: string;  // 流行元素
+  craft?: string;            // 工艺
+  launch_season?: string;    // 上市年份/季节
+  main_material?: string;    // 主面料成分
+  color?: string;           // 颜色
+  size?: string;           // 尺码
+  // 尺码图片可以是单个URL或URL数组（后端可能返回数组）
+  size_img?: string | string[];
+  // 商品图片通常是URL数组；为兼容性，支持字符串或带 url/tag 的对象
+  good_img?: Array<string | { url: string; tag?: string }>;
+  factory_name?: string;  // 工厂名称
+  sales_status?: string;  // 销售状态：sold_out-售罄, on_sale-在售, pre_sale-预售
 }
 
-export interface SearchResult {
-  product_id: string;
-  name: string;
-  attributes: Record<string, string>;
-  price: number;
-  description: string;
+export interface SearchResult extends ProductInfo {
   similarity: number;
   image_path: string;
-  original_path?: string; // 添加原始路径用于调试
+  original_path?: string;
+}
+
+export interface ProductDetails extends ProductInfo {
+  image_path: string;
+  features?: string[];
+  specs?: Record<string, string>;
+}
+
+export interface Customer {
+  id: number;
+  name: string;
+  wechat: string;
+  phone: string;
+  default_address: string;
+  address_history: string[];
+}
+
+export interface AddressInfo {
+  name: string;
+  wechat: string;
+  phone: string;
+  address: string;
+  province?: string;
+  city?: string;
+  district?: string;
 }
 
 // Helper function to get full image URL
@@ -55,6 +108,42 @@ export const getImageUrl = (imagePath: string): string => {
   return fullUrl;
 };
 
+export const getProductById = async (productId: number | string): Promise<ProductInfo> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/products/${String(productId)}`, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      let errorMessage = '获取商品详情失败';
+      
+      if (response.status === 404) {
+        errorMessage = `商品ID "${productId}" 不存在`;
+      } else if (response.status === 500) {
+        errorMessage = '服务器内部错误，请检查后端日志';
+      } else if (response.status === 0) {
+        errorMessage = 'CORS跨域错误 - 前端无法访问后端，请检查后端CORS配置';
+      } else {
+        try {
+          const error = await response.json();
+          errorMessage = error.error || `HTTP ${response.status}: ${response.statusText}`;
+        } catch {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error(`网络连接失败 - 无法连接到后端服务器 (${API_BASE_URL})`);
+    }
+    throw error;
+  }
+};
+
 export const uploadProduct = async (
   productInfo: ProductInfo,
   images: File[]
@@ -79,25 +168,60 @@ export const uploadProduct = async (
   return response.json();
 };
 
+
 export const searchProducts = async (
   image: File,
   topK: number = 5
-): Promise<{ results: SearchResult[] }> => {
+): Promise<SearchResult[]> => {
   const formData = new FormData();
   formData.append('image', image);
   formData.append('top_k', topK.toString());
 
-  const response = await fetch(`${API_BASE_URL}/search`, {
-    method: 'POST',
-    body: formData,
-  });
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/products/search`, {
+      method: 'POST',
+      body: formData,
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || '搜索失败');
+    if (!response.ok) {
+      let errorMessage = '搜索失败';
+      
+      if (response.status === 404) {
+        errorMessage = '搜索接口不存在 - 请检查后端是否正确部署了搜索功能';
+      } else if (response.status === 400) {
+        errorMessage = '请求参数错误 - 图片格式可能不支持或文件损坏';
+      } else if (response.status === 500) {
+        errorMessage = '服务器内部错误 - 后端处理图片搜索时出错，请检查后端日志';
+      } else if (response.status === 0) {
+        errorMessage = 'CORS跨域错误 - 前端无法访问后端搜索接口，请检查后端CORS配置';
+      } else {
+        // Clone the response before reading it
+        const errorClone = response.clone();
+        
+        try {
+          // Try to parse as JSON first
+          const error = await response.json();
+          errorMessage = error.error || `HTTP ${response.status}: ${response.statusText}`;
+        } catch (jsonError) {
+          // If JSON parsing fails, get the text from the cloned response
+          const text = await errorClone.text();
+          console.error('Non-JSON error response:', text.substring(0, 100) + '...');
+          errorMessage = `HTTP ${response.status}: 服务器返回了非JSON格式的响应`;
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    return data.results || data;
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error(`网络连接失败 - 无法连接到后端搜索服务 (${API_BASE_URL}/api/products/search)`);
+    }
+    console.error('Search request failed:', error);
+    throw error instanceof Error ? error : new Error('搜索请求失败');
   }
-
-  return response.json();
 };
 
 export const uploadProductCSV = async (
@@ -108,7 +232,7 @@ export const uploadProductCSV = async (
   formData.append('csv_file', csvFile);
   formData.append('images_folder', imagesFolder);
 
-  const response = await fetch(`${API_BASE_URL}/products/csv`, {
+  const response = await fetch(`${API_BASE_URL}/api/products/upload_csv`, {
     method: 'POST',
     body: formData,
   });
@@ -116,6 +240,397 @@ export const uploadProductCSV = async (
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'CSV批量上传失败');
+  }
+
+  return response.json();
+};
+
+// Parse and save customer address information
+export const parseAndSaveAddress = async (text: string): Promise<AddressInfo> => {
+  const response = await fetch(`${API_BASE_URL}/api/customers/parse-address`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ text }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to parse address');
+  }
+
+  return response.json();
+};
+
+// Add new customer
+export const addCustomer = async (customerInfo: AddressInfo): Promise<{ message: string; customer_id: number }> => {
+  const response = await fetch(`${API_BASE_URL}/api/customers`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(customerInfo),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to add customer');
+  }
+
+  return response.json();
+};
+
+// 获取所有产品
+export const getProducts = async (): Promise<ProductInfo[]> => {
+  const response = await fetch(`${API_BASE_URL}/api/products`);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || '获取产品列表失败');
+  }
+  return response.json();
+};
+
+// 添加产品
+export const addProduct = async (formData: FormData): Promise<{ message: string; id: string }> => {
+  const response = await fetch(`${API_BASE_URL}/api/products`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || '添加产品失败');
+  }
+
+  return response.json();
+};
+
+// 更新产品
+export const updateProduct = async (productId: number | string, formData: FormData): Promise<{ message: string }> => {
+  const response = await fetch(`${API_BASE_URL}/api/products/${String(productId)}`, {
+    method: 'PUT',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || '更新产品失败');
+  }
+
+  return response.json();
+};
+
+// 删除产品
+export const deleteProduct = async (productId: number | string): Promise<{ message: string }> => {
+  const response = await fetch(`${API_BASE_URL}/api/products/${String(productId)}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || '删除产品失败');
+  }
+
+  return response.json();
+};
+
+// 批量删除产品
+export const batchDeleteProductsAPI = async (productIds: React.Key[]): Promise<{ message: string; num_deleted?: number }> => {
+  // 后端期望产品ID是数字
+  const idsAsNumbers = productIds.map(id => Number(id)).filter(id => !isNaN(id));
+
+  if (idsAsNumbers.length !== productIds.length) {
+    // 如果有些ID无法转换为有效的数字，这可能是一个问题
+    console.warn('batchDeleteProductsAPI: Some product IDs could not be converted to numbers.', productIds);
+    // 可以选择抛出错误或仅使用有效的数字ID
+    // throw new Error('提供的部分产品ID无效');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/products/batch-delete`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ ids: idsAsNumbers }),
+  });
+
+  if (!response.ok) {
+    let errorMessage = `批量删除产品失败 (HTTP ${response.status})`;
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.message || errorData.error || errorData.details || errorMessage;
+    } catch (e) {
+      // 如果响应不是JSON，尝试获取文本错误信息
+      try {
+        const textError = await response.text();
+        if (textError) errorMessage = textError; // 使用文本错误（如果存在）
+      } catch (textEx) {
+        // 忽略获取文本时的错误
+      }
+      console.error('Failed to parse JSON error response for batch delete, or response was not JSON.');
+    }
+    throw new Error(errorMessage);
+  }
+
+  return response.json(); // 后端应该返回 { message: string, num_deleted?: number }
+};
+
+// 删除产品图片
+export const deleteProductImage = async (productId: number | string, filename: string) => {
+  // 确保文件名不包含开头的斜杠
+  const cleanFilename = filename.replace(/^\/+/, '');
+  
+  const response = await fetch(`${API_BASE_URL}/api/products/images/${String(productId)}/${cleanFilename}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || '删除图片失败');
+  }
+  
+  return await response.json();
+};
+
+// 构建向量索引（用于图片相似度检索）
+export const buildVectorIndex = async (): Promise<{ message: string; status: string }> => {
+  const response = await fetch(`${API_BASE_URL}/api/products/build-vector-index`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || '构建向量索引失败');
+  }
+
+  return response.json();
+};
+
+// SSE 事件处理器类型定义
+export interface BuildVectorIndexHandlers {
+  onTotal?: (total: number) => void;
+  onProgress?: (processed: number, total: number, currentProductId: string, status: string) => void;
+  onComplete?: (message?: string, errors?: string[]) => void;
+  onError?: (message: string) => void;
+  onConnectionError?: (error: Event) => void;
+}
+
+export const buildVectorIndexSSE = (handlers: BuildVectorIndexHandlers): (() => void) => {
+  const eventSource = new EventSource(`${API_BASE_URL}/api/products/build-vector-index/sse`);
+
+  eventSource.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log('SSE Data:', data);
+
+    switch (data.type) {
+      case 'total':
+        handlers.onTotal?.(data.value);
+        break;
+      case 'progress':
+        handlers.onProgress?.(
+          data.processed,
+          data.total,
+          data.current_product_id,
+          data.status
+        );
+        break;
+      case 'complete':
+        handlers.onComplete?.(data.message, data.errors);
+        eventSource.close();
+        break;
+      case 'error':
+        handlers.onError?.(data.message);
+        eventSource.close();
+        break;
+    }
+  };
+
+  eventSource.onerror = (err) => {
+    console.error('EventSource failed:', err);
+    handlers.onConnectionError?.(err);
+    eventSource.close();
+  };
+
+  // 返回一个清理函数，用于在需要时关闭连接
+  return () => {
+    eventSource.close();
+  };
+};
+
+// 更新订单备注信息
+export const updateOrderNotes = async (
+  orderId: number | string,
+  notes: { customer_notes?: string; internal_notes?: string }
+): Promise<any> => {
+  const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}/notes`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(notes),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || '更新订单备注失败');
+  }
+
+  return response.json();
+};
+
+// AI虚拟试衣相关接口
+export interface VirtualTryOnRequest {
+  modelImage: File;
+  topClothing?: File;
+  bottomClothing?: File;
+}
+
+export interface VirtualTryOnResponse {
+  success: boolean;
+  message?: string;
+  result_image_url?: string;
+  task_id?: string;
+  error?: string;
+  details?: any;
+}
+
+// AI虚拟试衣
+export const performVirtualTryOn = async (
+  request: VirtualTryOnRequest
+): Promise<VirtualTryOnResponse> => {
+  const formData = new FormData();
+  formData.append('model_image', request.modelImage);
+  
+  if (request.topClothing) {
+    formData.append('top_clothing', request.topClothing);
+  }
+  
+  if (request.bottomClothing) {
+    formData.append('bottom_clothing', request.bottomClothing);
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/virtual-try-on`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'AI试衣失败');
+  }
+
+  return response.json();
+};
+
+// 获取试衣任务状态
+export const getVirtualTryOnStatus = async (taskId: string): Promise<any> => {
+  const response = await fetch(`${API_BASE_URL}/api/virtual-try-on/status/${taskId}`, {
+    method: 'GET',
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || '获取试衣状态失败');
+  }
+
+  return response.json();
+};
+
+// ---------------- 文件哈希计算 ----------------
+export const calculateFileHash = async (file: File): Promise<string> => {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex;
+};
+
+// 检查文件哈希是否已存在
+export const checkFileHash = async (fileHash: string): Promise<{
+  exists: boolean;
+  url?: string;
+  path?: string;
+  filename?: string;
+  file_hash?: string;
+}> => {
+  const response = await fetch(`${API_BASE_URL}/api/oss/check-hash`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ file_hash: fileHash }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || '检查文件哈希失败');
+  }
+
+  return response.json();
+};
+
+// ---------------- 图片上传到OSS（带去重功能） ----------------
+export const uploadImageToOSS = async (file: File, folder: string = 'virtual-try-on'): Promise<string> => {
+  try {
+    // 1. 计算文件哈希
+    const fileHash = await calculateFileHash(file);
+    
+    // 2. 检查是否已存在相同文件
+    const hashCheck = await checkFileHash(fileHash);
+    if (hashCheck.exists && hashCheck.url) {
+      console.log('文件已存在，使用现有URL:', hashCheck.url);
+      return hashCheck.url;
+    }
+    
+    // 3. 如果不存在，执行上传
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('folder', folder);
+
+    const response = await fetch(`${API_BASE_URL}/api/oss/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || '图片上传失败');
+    }
+
+    const data = await response.json();
+    return data.url;
+  } catch (error) {
+    console.error('OSS上传失败:', error);
+    throw error;
+  }
+};
+
+// ---------------- AI虚拟试衣（使用OSS URL） ----------------
+export interface VirtualTryOnUrlRequest {
+  model_image_url: string;
+  top_clothing_url?: string;
+  bottom_clothing_url?: string;
+}
+
+export const performVirtualTryOnByUrl = async (
+  data: VirtualTryOnUrlRequest
+): Promise<VirtualTryOnResponse> => {
+  const response = await fetch(`${API_BASE_URL}/api/virtual-try-on`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'AI试衣失败');
   }
 
   return response.json();

@@ -1,7 +1,50 @@
+# 基础 Web 框架
+flask>=3.0.0
+flask-cors>=4.0.0
+werkzeug>=3.0.0
+
+# 数据库相关
+flask-sqlalchemy>=3.1.1
+mysqlclient>=2.2.4
+pymysql>=1.1.0
+SQLAlchemy>=2.0.0
+
+# AI 和图像处理
 faiss-cpu>=1.7.4
 numpy>=1.24.0
 Pillow>=10.0.0
 dashscope>=1.13.3
-flask>=3.0.0
-flask-cors>=4.0.0
-werkzeug>=3.0.0
+openai>=1.12.0
+scikit-learn>=1.4.0
+opencv-python>=4.9.0
+
+# 工具和辅助库
+python-dotenv>=1.0.0
+requests>=2.31.0
+pypinyin>=0.50.0
+pydantic>=2.6.0
+python-jose[cryptography]>=3.3.0  # JWT支持
+passlib>=1.7.4  # 密码哈希
+bcrypt>=4.1.0   # 密码加密
+oss2==2.16.0    # 阿里云OSS
+
+# 开发工具
+pytest>=8.0.0
+pytest-cov>=4.1.0
+black>=24.1.0   # 代码格式化
+flake8>=7.0.0   # 代码检查
+mypy>=1.8.0     # 类型检查
+
+# 性能优化
+gunicorn>=21.2.0  # 生产环境WSGI服务器
+gevent>=23.9.1   # 异步支持
+redis>=5.0.1     # 缓存支持（如果需要）
+
+# 日期时间处理
+pytz>=2024.1
+python-dateutil>=2.8.2
+
+# 文件处理
+pandas>=2.2.0    # 数据处理
+openpyxl>=3.1.2  # Excel文件支持
+python-magic>=0.4.27  # 文件类型检测

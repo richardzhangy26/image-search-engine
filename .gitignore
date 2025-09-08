@@ -58,9 +58,12 @@ Thumbs.db
 /data/
 /uploads/
 /images/
+商品信息/
+商品信息.zip
 *.faiss
 *.index
 *.npy
-
+*.png
 # Logs
 *.log
+*.jpg

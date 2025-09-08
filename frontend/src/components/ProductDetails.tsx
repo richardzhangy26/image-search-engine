@@ -1,93 +1,93 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ShoppingCart } from 'lucide-react';
-
-// Mock product data - in a real app, this would come from an API
-const mockProducts = {
-  '1': {
-    id: '1',
-    url: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30',
-    name: "Smart Watch Pro",
-    category: "Electronics",
-    price: 299.99,
-    description: "Premium smartwatch with heart rate monitoring, GPS tracking, and a beautiful OLED display. Perfect for fitness enthusiasts and tech lovers alike.",
-    features: [
-      "Heart rate monitoring",
-      "GPS tracking",
-      "OLED display",
-      "Water resistant",
-      "5-day battery life"
-    ],
-    specs: {
-      "Display": "1.4\" OLED",
-      "Battery": "410mAh",
-      "Water Resistance": "5ATM",
-      "Connectivity": "Bluetooth 5.0, WiFi",
-      "Compatibility": "iOS 12+, Android 8+"
-    }
-  },
-  '2': {
-    id: '2',
-    url: 'https://images.unsplash.com/photo-1546868871-7041f2a55e12',
-    name: "Digital Watch X",
-    category: "Electronics",
-    price: 199.99,
-    description: "Modern digital watch with advanced features including water resistance up to 50m, stopwatch, and multiple time zones.",
-    features: [
-      "Multiple time zones",
-      "Stopwatch",
-      "50m water resistance",
-      "LED backlight",
-      "2-year battery life"
-    ],
-    specs: {
-      "Display": "LCD",
-      "Battery": "CR2032",
-      "Water Resistance": "50m",
-      "Case Material": "Stainless Steel",
-      "Band": "Silicone"
-    }
-  },
-  '3': {
-    id: '3',
-    url: 'https://images.unsplash.com/photo-1542496658-e33a6d0d50f6',
-    name: "Classic Timepiece",
-    category: "Accessories",
-    price: 399.99,
-    description: "Elegant classic watch with genuine leather strap, sapphire crystal, and Swiss movement. A timeless piece for any collection.",
-    features: [
-      "Swiss movement",
-      "Sapphire crystal",
-      "Genuine leather strap",
-      "30m water resistance",
-      "Date display"
-    ],
-    specs: {
-      "Movement": "Swiss Automatic",
-      "Case": "316L Stainless Steel",
-      "Crystal": "Sapphire",
-      "Band": "Genuine Leather",
-      "Water Resistance": "30m"
-    }
-  }
-};
+import { ArrowLeft } from 'lucide-react';
+import { getProductById, ProductInfo, getImageUrl } from '../services/api';
 
 function ProductDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const product = id ? mockProducts[id as keyof typeof mockProducts] : null;
+  const [product, setProduct] = useState<ProductInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!product) {
+  useEffect(() => {
+    const fetchProductDetails = async () => {
+      if (!id) return;
+      
+      setLoading(true);
+      try {
+        const productData = await getProductById(id);
+        setProduct(productData);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching product details:', err);
+        setError(err instanceof Error ? err.message : '获取商品详情失败');
+        setProduct(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProductDetails();
+  }, [id]);
+
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900">Product not found</h2>
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <h2 className="text-xl font-medium text-gray-700">加载商品信息中...</h2>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !product) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-4">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="w-6 h-6 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-lg font-medium text-red-800">加载失败</h3>
+                <div className="mt-2 text-sm text-red-700">
+                  <p>{error || '商品不存在'}</p>
+                  {error && error.includes('CORS跨域错误') && (
+                    <div className="mt-2 p-2 bg-red-100 rounded border-l-4 border-red-400">
+                      <p className="text-xs">
+                        <strong>解决方案：</strong><br/>
+                        1. 检查后端是否启动在正确的端口 (5000)<br/>
+                        2. 确认后端CORS配置包含当前访问地址：{window.location.origin}<br/>
+                        3. 检查防火墙和网络设置
+                      </p>
+                    </div>
+                  )}
+                  {error && error.includes('网络连接失败') && (
+                    <div className="mt-2 p-2 bg-red-100 rounded border-l-4 border-red-400">
+                      <p className="text-xs">
+                        <strong>解决方案：</strong><br/>
+                        1. 确认后端服务已启动<br/>
+                        2. 检查网络连接是否正常<br/>
+                        3. 尝试直接访问后端服务
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+          
           <button
             onClick={() => navigate('/')}
-            className="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Search
+            返回搜索
           </button>
         </div>
       </div>
@@ -96,69 +96,159 @@ function ProductDetails() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-        <button
-          onClick={() => navigate('/')}
-          className="mb-8 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Search
-        </button>
-
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-8">
-            <div className="space-y-4">
-              <img
-                src={product.url}
-                alt={product.name}
-                className="w-full h-96 object-cover rounded-lg"
-              />
-              <div className="grid grid-cols-4 gap-2">
-                {/* Additional product images would go here */}
-                <div className="aspect-square bg-gray-100 rounded-md"></div>
-                <div className="aspect-square bg-gray-100 rounded-md"></div>
-                <div className="aspect-square bg-gray-100 rounded-md"></div>
-                <div className="aspect-square bg-gray-100 rounded-md"></div>
-              </div>
+      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div className="bg-white shadow-sm rounded-lg overflow-hidden">
+          <div className="p-6">
+            <div className="flex justify-between items-start">
+              <h1 className="text-3xl font-bold text-gray-900 mb-4">{product.name}</h1>
+              <button
+                onClick={() => navigate('/')}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                返回搜索
+              </button>
             </div>
 
-            <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">{product.name}</h1>
-                <p className="text-lg text-gray-500">{product.category}</p>
+                <img
+                  src={(() => {
+                    const imgs = product.good_img;
+                    if (!imgs || (Array.isArray(imgs) && imgs.length === 0)) return '';
+                    const first = Array.isArray(imgs) ? imgs[0] : imgs;
+                    const url = typeof first === 'string' ? first : first?.url;
+                    return url ? getImageUrl(url) : '';
+                  })()}
+                  alt={product.name}
+                  className="w-full rounded-lg shadow-lg"
+                />
+                {product.size_img && (
+                  <div className="mt-4">
+                    <h3 className="text-lg font-semibold mb-2">尺码表</h3>
+                    {Array.isArray(product.size_img) ? (
+                      <img
+                        src={getImageUrl(product.size_img[0])}
+                        alt="尺码表"
+                        className="w-full rounded-lg shadow"
+                      />
+                    ) : (
+                      <img
+                        src={getImageUrl(product.size_img)}
+                        alt="尺码表"
+                        className="w-full rounded-lg shadow"
+                      />
+                    )}
+                  </div>
+                )}
               </div>
 
-              <div className="text-4xl font-bold text-gray-900">
-                ${product.price}
-              </div>
-
-              <p className="text-gray-600">{product.description}</p>
-
               <div>
-                <h3 className="text-lg font-semibold mb-2">Key Features</h3>
-                <ul className="list-disc list-inside space-y-1 text-gray-600">
-                  {product.features.map((feature, index) => (
-                    <li key={index}>{feature}</li>
-                  ))}
-                </ul>
-              </div>
-
-              <div>
-                <h3 className="text-lg font-semibold mb-2">Specifications</h3>
-                <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
-                  {Object.entries(product.specs).map(([key, value]) => (
-                    <div key={key} className="border-b border-gray-200 pb-2">
-                      <dt className="text-sm font-medium text-gray-500">{key}</dt>
-                      <dd className="text-sm text-gray-900">{value}</dd>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-baseline">
+                    <div className="text-2xl font-bold text-red-600">
+                      ¥{product.sale_price.toFixed(2)}
                     </div>
-                  ))}
-                </dl>
-              </div>
+                    {product.sale_price < product.price && (
+                      <div className="text-lg text-gray-500 line-through">
+                        ¥{product.price.toFixed(2)}
+                      </div>
+                    )}
+                  </div>
 
-              <button className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold flex items-center justify-center hover:bg-blue-700 transition-colors">
-                <ShoppingCart className="w-5 h-5 mr-2" />
-                Add to Cart
-              </button>
+                  {product.product_code && (
+                    <div>
+                      <span className="text-gray-600">货号：</span>
+                      <span className="font-medium">{product.product_code}</span>
+                    </div>
+                  )}
+
+                  <div className="prose max-w-none">
+                    <p className="text-gray-600">{product.description}</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {product.style && (
+                      <div>
+                        <span className="text-gray-600">风格：</span>
+                        <span className="font-medium">{product.style}</span>
+                      </div>
+                    )}
+                    {product.color && (
+                      <div>
+                        <span className="text-gray-600">颜色：</span>
+                        <span className="font-medium">{product.color}</span>
+                      </div>
+                    )}
+                    {product.size && (
+                      <div>
+                        <span className="text-gray-600">尺码：</span>
+                        <span className="font-medium">{product.size}</span>
+                      </div>
+                    )}
+                    {product.main_material && (
+                      <div>
+                        <span className="text-gray-600">主面料：</span>
+                        <span className="font-medium">{product.main_material}</span>
+                      </div>
+                    )}
+                    {product.pattern && (
+                      <div>
+                        <span className="text-gray-600">图案：</span>
+                        <span className="font-medium">{product.pattern}</span>
+                      </div>
+                    )}
+                    {product.clothing_length && (
+                      <div>
+                        <span className="text-gray-600">衣长：</span>
+                        <span className="font-medium">{product.clothing_length}</span>
+                      </div>
+                    )}
+                    {product.skirt_length && (
+                      <div>
+                        <span className="text-gray-600">裙长：</span>
+                        <span className="font-medium">{product.skirt_length}</span>
+                      </div>
+                    )}
+                    {product.pants_length && (
+                      <div>
+                        <span className="text-gray-600">裤长：</span>
+                        <span className="font-medium">{product.pants_length}</span>
+                      </div>
+                    )}
+                    {product.sleeve_length && (
+                      <div>
+                        <span className="text-gray-600">袖长：</span>
+                        <span className="font-medium">{product.sleeve_length}</span>
+                      </div>
+                    )}
+                    {product.fashion_elements && (
+                      <div>
+                        <span className="text-gray-600">流行元素：</span>
+                        <span className="font-medium">{product.fashion_elements}</span>
+                      </div>
+                    )}
+                    {product.craft && (
+                      <div>
+                        <span className="text-gray-600">工艺：</span>
+                        <span className="font-medium">{product.craft}</span>
+                      </div>
+                    )}
+                    {product.launch_season && (
+                      <div>
+                        <span className="text-gray-600">上市年份/季节：</span>
+                        <span className="font-medium">{product.launch_season}</span>
+                      </div>
+                    )}
+                    {product.factory_name && (
+                      <div>
+                        <span className="text-gray-600">工厂名称：</span>
+                        <span className="font-medium">{product.factory_name}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -1,0 +1,43 @@
+---
+description: deploy
+globs: 
+alwaysApply: false
+---
+# Deployment Guide
+
+## Docker Deployment
+- Main configuration: [docker-compose.yml](mdc:docker-compose.yml)
+- Frontend container: [frontend/Dockerfile](mdc:frontend/Dockerfile)
+- Backend container: [backend/Dockerfile](mdc:backend/Dockerfile)
+
+## Netlify Deployment
+- Frontend configuration: [frontend/netlify.toml](mdc:frontend/netlify.toml)
+- Root configuration: [netlify.toml](mdc:netlify.toml)
+
+## Kubernetes Deployment
+- Kubernetes configuration: [k8s/](mdc:k8s)
+- Windsurf deployment: [windsurf_deployment.yaml](mdc:windsurf_deployment.yaml)
+
+## Deployment Steps
+1. Build Docker images:
+   ```bash
+   docker-compose build
+   ```
+
+2. Run locally:
+   ```bash
+   docker-compose up
+   ```
+
+3. Deploy to production:
+   ```bash
+   # Follow instructions in DOCKER_README.md
+   ```
+
+## Environment Configuration
+- Frontend environment variables in [frontend/.env](mdc:frontend/.env)
+- Backend environment variables in [backend/.env](mdc:backend/.env)
+
+## Documentation
+- Docker setup: [DOCKER_README.md](mdc:DOCKER_README.md)
+- Local Docker setup: [LOCAL_DOCKER_README.md](mdc:LOCAL_DOCKER_README.md)
